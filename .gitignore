@@ -1,0 +1,4 @@
+.direnv/
+.emscripten_cache/
+build/
+node_modules/
