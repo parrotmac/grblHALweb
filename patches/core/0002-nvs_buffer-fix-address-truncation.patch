@@ -1,0 +1,22 @@
+nvs_buffer: do not truncate NVS addresses when syncing to physical storage
+
+nvs_buffer_sync_physical() computed the NVS address of startup lines,
+coordinate systems and tool data into a uint_fast8_t. That type is 32 bits
+with ARM GCC but 8 bits with musl (WebAssembly) and glibc on x86, where
+addresses above 255 wrapped and the data was written over the settings
+at the start of NVS.
+
+diff --git a/nvs_buffer.c b/nvs_buffer.c
+index ff191cd..2c678af 100644
+--- a/nvs_buffer.c
++++ b/nvs_buffer.c
+@@ -338,7 +338,8 @@ FLASHMEM void nvs_buffer_sync_physical (void)
+         if(settings_dirty.build_info)
+             settings_dirty.build_info = physical_nvs.memcpy_to_nvs(NVS_ADDR_BUILD_INFO, (uint8_t *)(nvsbuffer.addr + NVS_ADDR_BUILD_INFO), sizeof(stored_line_t) + NVS_CRC_BYTES, false) != NVS_TransferResult_OK;
+ 
+-        uint_fast8_t idx = N_STARTUP_LINE, offset;
++        uint_fast8_t idx = N_STARTUP_LINE;
++        uint32_t offset;
+         if(settings_dirty.startup_lines) do {
+             idx--;
+             if(bit_istrue(settings_dirty.startup_lines, bit(idx))) {
