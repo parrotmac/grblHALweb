@@ -10,18 +10,7 @@ switches are driven by the simulated motor positions.
 
 Source, build instructions and the demo app: https://github.com/parrotmac/grblHALweb
 
-## Install (GitHub Packages)
-
-The package is public on GitHub's npm registry, which still needs a token to
-install any package. Add an `.npmrc` next to your `package.json`:
-
-```
-@parrotmac:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
-```
-
-with any token that has `read:packages` in `GITHUB_TOKEN` (in GitHub Actions,
-`secrets.GITHUB_TOKEN` with `permissions: packages: read`). Then:
+## Install
 
 ```sh
 npm install @parrotmac/grblhal-web

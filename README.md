@@ -49,15 +49,10 @@ spindle, a G54 offset over the table); settings live in localStorage.
 
 ## The package
 
-`pkg/` is published to GitHub Packages as `@parrotmac/grblhal-web`; its README
-covers installing and using it. CI (`.github/workflows/package.yml`) builds the
+`pkg/` is published to npm as `@parrotmac/grblhal-web`; its README covers
+installing and using it. CI (`.github/workflows/package.yml`) builds the
 firmware with this flake, runs a smoke test and packs the package on every
-push. Pushing a tag that matches `pkg/package.json`'s version publishes it:
-
-```sh
-# bump pkg/package.json "version", commit, then
-git tag v0.2.0 && git push origin v0.2.0
-```
+push.
 
 `npm pack` in `pkg/` makes the same tarball locally. Its prepack step writes
 `firmware/build-info.json`, recording the grblHALweb and grblHAL core commits

@@ -5,3 +5,4 @@ node_modules/
 web/dist/
 pkg/firmware/
 *.tgz
+.npmrc

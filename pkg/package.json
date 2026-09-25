@@ -33,7 +33,7 @@
     "directory": "pkg"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   },
   "keywords": [
     "grbl",
