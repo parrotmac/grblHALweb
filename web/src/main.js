@@ -1,6 +1,5 @@
 import './style.css';
-import { GrblHAL } from './grblhal.js';
-import { loadFirmware } from './firmware.js';
+import { GrblHALWorker, jspiSupported } from '@parrotmac/grblhal-web';
 import { Sender } from './sender.js';
 import { Viewer } from './viewer.js';
 import { parseGcode } from './gcode.js';
@@ -12,7 +11,6 @@ const NVS_KEY = 'grblhal-web:nvs';
 const PRESET_KEY = 'grblhal-web:preset';
 
 const viewer = new Viewer($('viewport'));
-if (import.meta.env.DEV) Object.assign(window, { viewer }); // for poking at from devtools
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => viewer.applyTheme());
 
 // --- Console -----------------------------------------------------------------
@@ -33,8 +31,11 @@ function print(text, kind = 'rx') {
 let freshNvs = false;
 let rateWindow = { t: 0, wall: performance.now() };
 
-const sim = new GrblHAL({
+// The firmware runs in a Web Worker, so rendering never slows simulated time.
+const sim = new GrblHALWorker({
   speed: 1,
+  samples: true,
+  firmware: new URLSearchParams(location.search).get('firmware') ?? 'auto', // ?firmware=asyncify to test the fallback
   onSamples(data, count, stride) {
     viewer.addSamples(data, count, stride);
   },
@@ -63,6 +64,7 @@ const sim = new GrblHAL({
 });
 
 const sender = new Sender(sim);
+if (import.meta.env.DEV) Object.assign(window, { viewer, sim, sender }); // for poking at from devtools
 
 sender.onLine = (text, kind) => print(text, text === 'ok' ? 'ok' : kind);
 
@@ -246,8 +248,14 @@ $('file').addEventListener('change', async (e) => {
 
 // --- Boot --------------------------------------------------------------------
 
-const { factory, variant } = await loadFirmware();
-$('variant').textContent = variant;
-print(`Loading grblHAL (${variant} build)…`, 'note');
-await sim.start(factory);
+const VARIANT_NAMES = { jspi: 'JSPI', asyncify: 'Asyncify' };
+$('variant').textContent = VARIANT_NAMES[sim.firmware === 'auto' ? (jspiSupported ? 'jspi' : 'asyncify') : sim.firmware];
+print(`Loading grblHAL (${$('variant').textContent} build)…`, 'note');
+try {
+  await sim.start();
+  $('variant').textContent = VARIANT_NAMES[sim.variant];
+} catch (err) {
+  print(`Could not start the firmware: ${err.message}`, 'error');
+  throw err;
+}
 sender.startPolling(5);

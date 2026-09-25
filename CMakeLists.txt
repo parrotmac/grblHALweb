@@ -68,12 +68,22 @@ foreach(_async JSPI ASYNCIFY)
         -sMODULARIZE=1
         -sEXPORT_ES6=1
         -sEXPORT_NAME=createGrblHAL
-        -sENVIRONMENT=web,node
+        -sENVIRONMENT=web,worker,node
         -sALLOW_MEMORY_GROWTH=1
         -sEXIT_RUNTIME=0
         # main() never returns; the host starts it with callMain() and does not await it
         -sINVOKE_RUN=0
         -sEXPORTED_RUNTIME_METHODS=callMain
         -s${_async}=1
+    )
+
+    # The npm package (pkg/) ships the builds from pkg/firmware.
+    add_custom_command(TARGET ${_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/pkg/firmware
+        COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_FILE:${_target}>
+            $<TARGET_FILE_DIR:${_target}>/${_target}.wasm
+            ${CMAKE_SOURCE_DIR}/pkg/firmware/
+        VERBATIM
     )
 endforeach()

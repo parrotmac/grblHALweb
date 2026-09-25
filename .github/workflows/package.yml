@@ -1,0 +1,65 @@
+name: package
+
+# Builds the firmware and the npm package on every push and pull request, and
+# publishes @parrotmac/grblhal-web to GitHub Packages when a v* tag is pushed
+# (the tag must match pkg/package.json's version, e.g. v0.1.0).
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # The same toolchain as local development (flake.nix).
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build firmware
+        run: nix develop --command bash -c 'emcmake cmake -B build -G Ninja && cmake --build build'
+
+      - name: Smoke test
+        run: |
+          nix develop --command node tools/run-headless.mjs -c '$I' -c 'G1 X10 F500' -c '?' | tee smoke.log
+          grep -q 'MPos:10.000,0.000,0.000' smoke.log
+
+      - name: Pack
+        working-directory: pkg
+        run: nix develop --command npm pack
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grblhal-web
+          path: pkg/*.tgz
+
+      - uses: actions/setup-node@v4
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          node-version: 24
+          registry-url: https://npm.pkg.github.com
+          scope: '@parrotmac'
+
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: pkg
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $version" >&2
+            exit 1
+          fi
+          # prepack needs emcc for build-info.json, so publish the tarball packed above.
+          npm publish ./*.tgz

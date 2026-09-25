@@ -1,12 +1,12 @@
 import { defineConfig } from 'vite';
-import { fileURLToPath } from 'node:url';
-
-// The firmware is built by CMake into ../build (see the top-level README).
-const firmware = fileURLToPath(new URL('../build', import.meta.url));
 
 export default defineConfig({
-  resolve: { alias: { '@firmware': firmware } },
+  // The firmware package is linked from ../pkg.
   server: { fs: { allow: ['..'] } },
-  optimizeDeps: { exclude: ['@firmware'] },
+  // Keep the package out of dependency pre-bundling: its Worker and .wasm
+  // files are found through new URL(..., import.meta.url), which must stay
+  // relative to the package's own files.
+  optimizeDeps: { exclude: ['@parrotmac/grblhal-web'] },
+  worker: { format: 'es' },
   build: { target: 'es2022' },
 });

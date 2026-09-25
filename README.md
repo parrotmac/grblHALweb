@@ -16,8 +16,12 @@ src/             wasm driver, derived from grblHAL/Simulator
   mcu.c          emulated timers / GPIO / UART
   driver.c       grblHAL HAL implementation on top of mcu.c
   serial.c       UART stream
-web/             browser app (Vite + three.js)
-  src/grblhal.js JS host wrapper (serial queues, position samples, NVS)
+pkg/             npm package @parrotmac/grblhal-web (see pkg/README.md)
+  src/grblhal.js       GrblHAL: runs the firmware on the calling thread
+  src/worker-client.js GrblHALWorker: the same API, firmware in a Web Worker
+  src/worker.js        the worker entry point
+  firmware/            the two builds, copied here by CMake (not committed)
+web/             demo app (Vite + three.js), uses the package through a link
   src/sender.js  character-counting G-code sender, status parsing
   src/viewer.js  three.js machine view
 tools/           headless Node runner
@@ -29,7 +33,7 @@ tools/           headless Node runner
 direnv allow                      # or: nix develop
 git submodule update --init
 emcmake cmake -B build -G Ninja
-cmake --build build               # build/grblhal-{jspi,asyncify}.{mjs,wasm}
+cmake --build build               # build/grblhal-{jspi,asyncify}.{mjs,wasm}, copied to pkg/firmware
 ```
 
 ## Run in the browser
@@ -42,6 +46,22 @@ The page loads the JSPI build where the engine supports it (Chrome,
 Firefox) and the Asyncify build elsewhere. A fresh browser profile gets a
 demo machine preset (300×200×80 mm, homing and hard/soft limits on, 24k
 spindle, a G54 offset over the table); settings live in localStorage.
+
+## The package
+
+`pkg/` is published to GitHub Packages as `@parrotmac/grblhal-web`; its README
+covers installing and using it. CI (`.github/workflows/package.yml`) builds the
+firmware with this flake, runs a smoke test and packs the package on every
+push. Pushing a tag that matches `pkg/package.json`'s version publishes it:
+
+```sh
+# bump pkg/package.json "version", commit, then
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+`npm pack` in `pkg/` makes the same tarball locally. Its prepack step writes
+`firmware/build-info.json`, recording the grblHALweb and grblHAL core commits
+the firmware was built from.
 
 ## Run headless
 

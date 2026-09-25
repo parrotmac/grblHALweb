@@ -18,6 +18,7 @@
 */
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <emscripten.h>
@@ -125,6 +126,10 @@ EM_JS(double, host_speed, (void), {
     return Module.host.speed();
 });
 
+EM_JS(int, host_stop_requested, (void), {
+    return Module.host.stopRequested() ? 1 : 0;
+});
+
 static inline double sim_ms (void)
 {
     return (double)sim.masterclock / (double)TICKS_PER_MS;
@@ -174,6 +179,11 @@ static void sim_yield (double ms)
     }
 
     emscripten_sleep(ms > 0.0 ? (unsigned int)ms : 0);
+
+    // grblHAL's main() never returns, so the host stops the firmware by asking
+    // here: exit() unwinds the whole wasm stack and settles callMain().
+    if(host_stop_requested())
+        exit(0);
 
     pace.last_yield_ms = emscripten_get_now();
     pace.speed = host_speed();

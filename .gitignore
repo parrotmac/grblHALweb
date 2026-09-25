@@ -3,3 +3,5 @@ build*/
 .emscripten_cache/
 node_modules/
 web/dist/
+pkg/firmware/
+*.tgz

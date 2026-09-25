@@ -6,8 +6,7 @@
 //   node tools/run-headless.mjs [-t speed] [-e nvs.bin] [-s samples.csv] [file.nc | -c "cmd" ...]
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { GrblHAL } from '../web/src/grblhal.js';
-import createGrblHAL from '../build/grblhal-jspi.mjs';
+import { GrblHAL, loadFirmware } from '../pkg/src/index.js';
 
 const args = process.argv.slice(2);
 let speed = 0, nvsFile = null, samplesFile = null;
@@ -58,7 +57,7 @@ const sim = new GrblHAL({
     if (nvsFile) writeFileSync(nvsFile, data);
   },
 });
-await sim.start(createGrblHAL);
+await sim.start((await loadFirmware('jspi')).factory);
 
 
 // Done when every line is acknowledged and the machine has reported idle for a while.
