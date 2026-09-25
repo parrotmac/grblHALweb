@@ -1,6 +1,6 @@
 {
   "name": "@parrotmac/grblhal-web",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "grblHAL CNC firmware compiled to WebAssembly with a simulated machine and a three.js viewer, for browsers, Web Workers and Node",
   "license": "GPL-3.0-or-later",
   "type": "module",
