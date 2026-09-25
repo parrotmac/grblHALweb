@@ -1,8 +1,7 @@
 import './style.css';
 import { GrblHALWorker, jspiSupported } from '@parrotmac/grblhal-web';
 import { Sender } from './sender.js';
-import { Viewer } from './viewer.js';
-import { parseGcode } from './gcode.js';
+import { MachineViewer, parseGcode } from '@parrotmac/grblhal-web/viewer';
 import { demoProgram, machinePreset, PRESET_VERSION } from './demo.js';
 
 const $ = (id) => document.getElementById(id);
@@ -10,8 +9,20 @@ const AXES = ['X', 'Y', 'Z'];
 const NVS_KEY = 'grblhal-web:nvs';
 const PRESET_KEY = 'grblhal-web:preset';
 
-const viewer = new Viewer($('viewport'));
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => viewer.applyTheme());
+// Scene colours follow the page's own tokens (style.css), in both schemes.
+const viewer = new MachineViewer($('viewport'), {
+  theme: {
+    background: 'var(--viewport-bg)',
+    grid: 'var(--grid)',
+    gridMajor: 'var(--grid-major)',
+    envelope: 'var(--envelope)',
+    preview: 'var(--path-preview)',
+    rapid: 'var(--path-rapid)',
+    cut: 'var(--path-cut)',
+    travel: 'var(--path-travel)',
+  },
+});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => viewer.setTheme());
 
 // --- Console -----------------------------------------------------------------
 
@@ -36,9 +47,7 @@ const sim = new GrblHALWorker({
   speed: 1,
   samples: true,
   firmware: new URLSearchParams(location.search).get('firmware') ?? 'auto', // ?firmware=asyncify to test the fallback
-  onSamples(data, count, stride) {
-    viewer.addSamples(data, count, stride);
-  },
+  onSamples: viewer.addSamples,
   nvsLoad(dest) {
     try {
       const saved = localStorage.getItem(NVS_KEY);
@@ -93,11 +102,7 @@ sender.onReset = async () => {
 };
 
 sender.onSettings = (settings) => {
-  const travel = [130, 131, 132].map((n) => parseFloat(settings.get(n)) || 0);
-  if (travel.join() !== viewer.envelope.join() && travel.every((t) => t > 0)) {
-    viewer.setEnvelope(travel);
-    viewer.fit();
-  }
+  if (viewer.applySettings(settings)) viewer.fit();
 };
 
 // --- Status ------------------------------------------------------------------
@@ -122,36 +127,9 @@ sender.onStatus = (s) => {
   $('feed').textContent = Math.round(s.feed);
   $('rpm').textContent = Math.round(s.rpm);
   $('pins').textContent = s.pins || '–';
+  viewer.setWorkOffset(s.wco);
   updateProgramButtons();
 };
-
-// Where grbl's machine origin sits on the physical machine, per axis, once
-// homed: limits_set_machine_positions() in core puts it at physical =
-// MPos + travel, except with "force origin" ($22 bit 3) and a negative homing
-// direction ($23), where the switch position becomes MPos 0.
-function homedFrameOffset() {
-  const num = (n) => parseFloat(sender.settings.get(n)) || 0;
-  const forceOrigin = num(22) & 8;
-  const dirMask = num(23);
-  return AXES.map((_, i) => (forceOrigin && dirMask & (1 << i) ? 0 : Math.abs(num(130 + i))));
-}
-
-// Work origin in physical coordinates = WCO + (physical - grbl MPos). Before
-// the machine is homed that frame is wherever it powered on, so while homing
-// is still required (alarm, not homed) show the program where it will run
-// once homed; during homing the frame is in flux, so leave it where it was.
-function updateWorkOrigin() {
-  if (!viewer.mposOffset) return;
-  const state = sender.status.state.split(':')[0];
-  if (state === 'Home') return;
-
-  const allHomed = viewer.homed === (1 << viewer.nAxes) - 1;
-  const provisional = !allHomed && (state === 'Alarm' || state === 'Unknown') && sender.settings.has(130);
-  const offset = provisional ? homedFrameOffset() : viewer.mposOffset;
-
-  viewer.setWorkOrigin(sender.status.wco.map((w, i) => w + offset[i]));
-  viewer.setPreviewProvisional(provisional);
-}
 
 function tick() {
   const now = performance.now();
@@ -166,7 +144,6 @@ function tick() {
     rateWindow = { t: sim.simTime, wall: now };
   }
 
-  updateWorkOrigin();
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);

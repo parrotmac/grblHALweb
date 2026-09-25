@@ -20,10 +20,10 @@ pkg/             npm package @parrotmac/grblhal-web (see pkg/README.md)
   src/grblhal.js       GrblHAL: runs the firmware on the calling thread
   src/worker-client.js GrblHALWorker: the same API, firmware in a Web Worker
   src/worker.js        the worker entry point
+  src/viewer/          MachineViewer (three.js), the ./viewer entry point
   firmware/            the two builds, copied here by CMake (not committed)
 web/             demo app (Vite + three.js), uses the package through a link
   src/sender.js  character-counting G-code sender, status parsing
-  src/viewer.js  three.js machine view
 tools/           headless Node runner
 ```
 
@@ -56,7 +56,7 @@ push. Pushing a tag that matches `pkg/package.json`'s version publishes it:
 
 ```sh
 # bump pkg/package.json "version", commit, then
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.2.0 && git push origin v0.2.0
 ```
 
 `npm pack` in `pkg/` makes the same tarball locally. Its prepack step writes

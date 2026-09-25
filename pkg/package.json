@@ -1,7 +1,7 @@
 {
   "name": "@parrotmac/grblhal-web",
-  "version": "0.1.0",
-  "description": "grblHAL CNC firmware compiled to WebAssembly with a simulated machine, for browsers, Web Workers and Node",
+  "version": "0.2.0",
+  "description": "grblHAL CNC firmware compiled to WebAssembly with a simulated machine and a three.js viewer, for browsers, Web Workers and Node",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "sideEffects": false,
@@ -9,6 +9,10 @@
     ".": {
       "types": "./src/index.d.ts",
       "default": "./src/index.js"
+    },
+    "./viewer": {
+      "types": "./src/viewer/index.d.ts",
+      "default": "./src/viewer/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -31,5 +35,20 @@
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },
-  "keywords": ["grbl", "grblhal", "cnc", "gcode", "simulator", "webassembly"]
+  "keywords": [
+    "grbl",
+    "grblhal",
+    "cnc",
+    "gcode",
+    "simulator",
+    "webassembly"
+  ],
+  "peerDependencies": {
+    "three": ">=0.159.0"
+  },
+  "peerDependenciesMeta": {
+    "three": {
+      "optional": true
+    }
+  }
 }
