@@ -24,6 +24,7 @@
             ninja
             gnumake
             pkg-config
+            gnupatch # applies patches/core to the build copy of grblHAL core
 
             # native toolchain for host-side tests of the driver
             clang

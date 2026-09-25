@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>grblHAL Simulator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600&family=Kode+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true"></span>
+        <h1>grblHAL <span>simulator</span></h1>
+        <span class="badge" id="variant" title="WebAssembly stack switching in use">…</span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="viewport" id="viewport">
+        <div class="hud">
+          <div class="hud-row"><span>Sim time</span><b id="simtime">0.000 s</b></div>
+          <div class="hud-row"><span>Rate</span><b id="rate">–</b></div>
+        </div>
+        <div class="hud-actions">
+          <button class="ghost" id="fit">Fit view</button>
+          <button class="ghost" id="clear-trail">Clear trail</button>
+        </div>
+        <div class="sim-controls">
+          <span class="state" id="state" data-state="Unknown">Booting</span>
+          <div class="segmented" id="speed" role="radiogroup" aria-label="Simulator speed">
+            <button data-speed="1" aria-checked="true" title="Simulator speed: real time">1×</button>
+            <button data-speed="5" title="Simulator speed: 5× real time">5×</button>
+            <button data-speed="20" title="Simulator speed: 20× real time">20×</button>
+            <button data-speed="100" title="Simulator speed: 100× real time">100×</button>
+            <button data-speed="0" title="Simulator speed: as fast as possible">Max</button>
+          </div>
+        </div>
+        <div class="legend">
+          <span><i class="swatch cut"></i>Cutting</span>
+          <span><i class="swatch travel"></i>Spindle off</span>
+          <span><i class="swatch preview"></i>Program</span>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <section class="card">
+          <div class="dro" id="dro">
+            <div class="dro-head"><span></span><span>Work</span><span>Machine</span></div>
+          </div>
+          <div class="readouts">
+            <div><span>Feed</span><b id="feed">0</b><small>mm/min</small></div>
+            <div><span>Spindle</span><b id="rpm">0</b><small>rpm</small></div>
+            <div><span>Pins</span><b id="pins">–</b></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Machine</h2>
+          <div class="button-row">
+            <button id="home">Home</button>
+            <button id="unlock">Unlock</button>
+            <button id="zero" title="Set work zero at the current position (G10 L20 P1 X0 Y0 Z0)">Zero here</button>
+            <button class="danger" id="reset" title="Soft reset (Ctrl-X)">Reset</button>
+          </div>
+          <div class="jog">
+            <div class="jog-pad">
+              <button data-jog="Y+" class="y-plus">Y+</button>
+              <button data-jog="X-" class="x-minus">X−</button>
+              <button data-jog="X+" class="x-plus">X+</button>
+              <button data-jog="Y-" class="y-minus">Y−</button>
+              <button data-jog="Z+" class="z-plus">Z+</button>
+              <button data-jog="Z-" class="z-minus">Z−</button>
+            </div>
+            <label class="field">Step
+              <select id="jog-step">
+                <option>0.1</option><option>1</option><option selected>10</option><option>50</option>
+              </select>
+            </label>
+            <label class="field">Feed
+              <select id="jog-feed">
+                <option>300</option><option selected>1500</option><option>4000</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Program</h2>
+          <div class="program-name" id="program-name">No program loaded</div>
+          <div class="progress" aria-hidden="true"><div id="progress-bar"></div></div>
+          <div class="program-meta" id="program-meta"></div>
+          <div class="button-row">
+            <label class="button file">Open…<input type="file" id="file" accept=".nc,.gcode,.ngc,.tap,.txt,.cnc" /></label>
+            <button id="demo">Demo job</button>
+            <button class="primary" id="run" disabled>Start</button>
+            <button id="hold" title="Feed hold (!)">Hold</button>
+            <button id="resume" title="Cycle start (~)">Resume</button>
+          </div>
+        </section>
+
+        <section class="card console">
+          <h2>Console</h2>
+          <div class="log" id="log" role="log" aria-live="polite"></div>
+          <form id="command">
+            <input id="command-input" autocomplete="off" spellcheck="false" placeholder="$$, G0 X10, $H …" />
+          </form>
+        </section>
+      </aside>
+    </main>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

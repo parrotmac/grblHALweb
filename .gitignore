@@ -1,4 +1,7 @@
+build*/
 .direnv/
 .emscripten_cache/
-build/
 node_modules/
+web/dist/
+pkg/firmware/
+*.tgz
