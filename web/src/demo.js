@@ -54,7 +54,9 @@ export function demoProgram() {
 // with limit switches, a 24k spindle and a work offset over the middle of the
 // table. The offset is relative to the homed origin, so homing is required at
 // power on ($22 bit 2) - otherwise jobs land wherever the machine woke up.
-export const PRESET_VERSION = 2;
+// Work Z0 is 10 mm above the table for the default 22 mm tool (the Z axis is
+// the collet face, and the tip is the tool's length below it).
+export const PRESET_VERSION = 3;
 
 export const machinePreset = [
   '$100=250', '$101=250', '$102=400',
@@ -65,5 +67,5 @@ export const machinePreset = [
   '$20=1', '$21=1',
   '$30=24000', '$31=0',
   '$10=511',
-  'G10 L2 P1 X-190 Y-130 Z-70',
+  'G10 L2 P1 X-190 Y-130 Z-48',
 ];

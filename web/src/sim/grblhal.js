@@ -7,6 +7,9 @@
 import { loadFirmware } from './firmware.js';
 import { serialOutput, toBytes } from './output.js';
 
+export const DEFAULT_TOOL_LENGTH = 22; // SIM_DEFAULT_TOOL_LENGTH in src/sim.h
+const FIXTURE_N = 10;                  // FIXTURE_N in src/sim.c
+
 export class GrblHAL {
   #input = [];            // pending bytes to the firmware
   #output = serialOutput(this);
@@ -15,6 +18,7 @@ export class GrblHAL {
   #markStopped = null;
 
   speed = 1;              // simulated seconds per wall second, 0 = as fast as possible
+  #fixture = null;        // { version, values }, see fixture below
   simTime = 0;            // simulated seconds at the last yield
   simTimeWall = 0;        // performance.now() when simTime was reported
   variant = null;         // 'jspi' | 'asyncify' once started
@@ -70,6 +74,23 @@ export class GrblHAL {
     return this.#input.length;
   }
 
+  // What is on the machine, in physical mm (0 = minimum end of travel, the
+  // table at Z = 0): the tool's length below the collet face, the stock as a
+  // box, and a touch plate's thickness. The probe input triggers when the tool
+  // tip reaches the stock (or the table) plus the plate. The firmware picks it
+  // up at its next yield.
+  set fixture({ toolLength = DEFAULT_TOOL_LENGTH, stock = null, plate = 0 } = {}) {
+    const values = new Float64Array(FIXTURE_N);
+    values[0] = toolLength;
+    values[1] = stock ? 1 : 0;
+    if (stock) {
+      values.set(stock.min.slice(0, 3), 2);
+      values.set(stock.max.slice(0, 3), 5);
+    }
+    values[8] = plate;
+    this.#fixture = { version: (this.#fixture?.version ?? 0) + 1, values };
+  }
+
   #hostInterface() {
     return {
       serialRead: (dest) => {
@@ -88,6 +109,7 @@ export class GrblHAL {
         this.simTimeWall = performance.now();
         this.onClock?.(seconds);
       },
+      fixture: () => this.#fixture,
       stopRequested: () => {
         if (this.#stopRequested) queueMicrotask(this.#markStopped);
         return this.#stopRequested;

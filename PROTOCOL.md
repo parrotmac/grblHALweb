@@ -88,13 +88,17 @@ Each message is an object with a `type`.
 | `speed` | `value`: number | Simulated seconds per wall second. `0` = as fast as possible. |
 | `program` | `text`: string or null, `name`?: string | Show a program preview in the machine view at grblHAL's work origin. `null` clears it. This does not send anything to the controller. |
 | `reboot` | `factory`?: boolean | Power cycle the controller. With `factory`, its saved settings are erased first. |
+| `stock` | `box`: `{ min: [x, y, z], max: [x, y, z] }` or null | The workpiece on the machine, in physical coordinates (see below). The machine view draws it where it is, whatever the work origin, and the probe input sees its top. `null` takes it off. |
+| `tool` | `tool`: `{ diameter, length, shape?, angle? }` or null | The tool in the collet, mm: `length` is how far its tip sticks out below the collet face, `shape` is `'flat'` (default), `'ball'` or `'v'`, `angle` a V bit's included angle in degrees. `null` puts the default back: a 3.175 mm end mill, 22 mm long. |
+| `probe` | `plate`: number or null | A touch plate this thick lies on top of whatever is under the tool: the probe input triggers when the tool tip reaches the stock's top (or the table, beside it) plus the plate. `null` or 0: the tip itself touches the surface. |
+| `view` | `program`?: boolean | Show or hide the program preview in the machine view. It's shown until told otherwise. |
 | `disconnect` | | Give the link back to the app. |
 
 ### App to client
 
 | type | fields | |
 | --- | --- | --- |
-| `connected` | `protocol`, `running`, `variant`, `speed`, `source` | Sent first. `running`: the firmware is booted. `variant`: `'jspi'` or `'asyncify'`, or null until booted. `source`: `{ repo, commit, dirty, core }`, the grblHALweb and grblHAL core commits the app was built from (`dirty`: with local changes; never for CI builds). |
+| `connected` | `protocol`, `running`, `variant`, `speed`, `source`, `features` | Sent first. `features`: the optional messages this app understands (`'stock'`, `'tool'`, `'probe'`, `'view'`); an app without the field understands none of them. `running`: the firmware is booted. `variant`: `'jspi'` or `'asyncify'`, or null until booted. `source`: `{ repo, commit, dirty, core }`, the grblHALweb and grblHAL core commits the app was built from (`dirty`: with local changes; never for CI builds). |
 | `started` | `variant` | The firmware booted, either at load or after `reboot`. grblHAL's own `GrblHAL ...` banner follows in `serial`. |
 | `serial` | `bytes`: Uint8Array | Raw UART output. |
 | `clock` | `time`: number | Simulated seconds, at every firmware yield (about 60 per second). |
@@ -106,6 +110,25 @@ Each message is an object with a `type`.
 
 The serial link runs at 115200 baud in simulated time. grblHAL reports a 1024
 byte RX buffer in `[OPT:...]`, which character-counting senders can use.
+
+### The physical machine
+
+The simulated machine has its own physical coordinates, in mm: X and Y from
+the minimum end of travel (the front left, with the default homing
+direction), and Z up from the table, at Z = 0. The Z axis position is the
+collet face; the tool tip is the tool's `length` below it. So grblHAL's
+machine position is the collet face's, while work coordinates set by probing
+or zeroing on the workpiece are the tip's, as on a real machine: after
+changing to a tool of a different length, Z has to be zeroed again.
+
+Once homed, with the default homing direction (towards `+`, `$23=0`) and
+without `$22` "force origin", the physical position is grblHAL's machine
+position plus the travel (`$130`-`$132`). So a work offset that puts work Z0
+at the top of a stock `t` mm thick, for a tool `L` mm long, is
+`G10 L2 P1 Z(t + L - $132)`.
+
+The stock and the tool are drawn in the machine view and are what the probe
+input sees; the machine doesn't cut the stock or collide with it.
 
 ### Position samples
 
@@ -120,7 +143,7 @@ moving, and on every change of state, spindle or coolant. Each sample is
 | 2 | spindle rpm, negative = counter-clockwise, 0 = off |
 | 3 | coolant mask: 1 = flood, 2 = mist |
 | 4 | homed axes mask |
-| 5 … 5+N-1 | physical axis positions, mm, integrated from the step/dir outputs (0 = minimum end of travel) |
+| 5 … 5+N-1 | physical axis positions, mm, integrated from the step/dir outputs (0 = minimum end of travel; Z is the collet face) |
 | 5+N … | grblHAL machine positions (MPos), mm |
 
 N = (stride - 5) / 2.
