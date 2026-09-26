@@ -1,5 +1,5 @@
 {
-  description = "grblHAL compiled to WebAssembly with a three.js simulator viewer";
+  description = "grblHAL compiled to WebAssembly: a machine simulator web app";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

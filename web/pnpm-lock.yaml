@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@parrotmac/grblhal-web':
-        specifier: link:../pkg
-        version: link:../pkg
       three:
         specifier: ^0.186.0
         version: 0.186.0

@@ -1,0 +1,66 @@
+name: build
+
+# Builds the firmware and the web app on every push and pull request. The app
+# (web/dist) is a static site, uploaded as the grblhal-web artifact, and
+# deployed to GitHub Pages from master.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # The same toolchain as local development (flake.nix).
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build firmware
+        run: nix develop --command bash -c 'emcmake cmake -B build -G Ninja && cmake --build build'
+
+      - name: Smoke test
+        run: |
+          nix develop --command node tools/run-headless.mjs -c '$I' -c 'G1 X10 F500' -c '?' | tee smoke.log
+          grep -q 'MPos:10.000,0.000,0.000' smoke.log
+
+      - name: Build app
+        working-directory: web
+        run: nix develop --command bash -c 'pnpm install --frozen-lockfile && pnpm build'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grblhal-web
+          path: web/dist
+
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/master'
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    # One deployment at a time; a newer push supersedes a queued one, but
+    # never cancels a deployment that is already running.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    permissions:
+      pages: write
+      id-token: write   # OIDC for actions/deploy-pages
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

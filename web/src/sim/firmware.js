@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
 // Picks the firmware build the engine can run: JSPI where WebAssembly stack
 // switching is available (no overhead), Asyncify everywhere else.
 

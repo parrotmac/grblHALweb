@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
 // three.js view of the simulated machine, fed by the firmware's position
 // samples (onSamples). Everything lives in physical machine coordinates (mm,
 // 0 = minimum end of travel, Z up) as integrated from the step/dir outputs;
@@ -5,7 +6,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { SAMPLE } from '../samples.js';
+import { SAMPLE } from '../sim/samples.js';
 import { parseGcode } from './gcode.js';
 
 export { parseGcode };

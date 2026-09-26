@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
 // Host side of the grblHAL wasm simulator: owns the serial queues, position
 // samples and NVS persistence that the firmware exchanges with the host at
 // each yield (see src/sim.c). Runs the firmware on the calling thread; see

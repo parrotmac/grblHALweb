@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
 // A G-code sender for the simulated controller: character-counting streaming
 // (keeps grblHAL's RX buffer full instead of waiting for each "ok"), status
 // polling and parsing of the replies a UI needs.
@@ -28,7 +29,9 @@ export class Sender {
   onSettings = null;    // (settings)
   onReset = null;       // () controller (re)booted
 
-  constructor(sim) {
+  // Reads the controller's output from `sim.onLine`, so it keeps parsing
+  // status, settings and resets while another client drives the link.
+  attach(sim) {
     this.sim = sim;
     sim.onLine = (line) => this.#receive(line);
   }
@@ -36,6 +39,11 @@ export class Sender {
   startPolling(hz = 5) {
     clearInterval(this.#pollTimer);
     this.#pollTimer = setInterval(() => this.sim.realtime(RT.status.charCodeAt(0)), 1000 / hz);
+  }
+
+  stopPolling() {
+    clearInterval(this.#pollTimer);
+    this.#pollTimer = null;
   }
 
   // Interactive command, sent after anything already queued. Resolves with
@@ -79,6 +87,12 @@ export class Sender {
   // Soft reset: the controller flushes its buffers, so do we.
   stop() {
     this.realtime('reset');
+  }
+
+  // Drops everything queued or in flight without touching the controller,
+  // e.g. when another client takes over the serial link.
+  cancel() {
+    this.#flush();
   }
 
   #flush() {

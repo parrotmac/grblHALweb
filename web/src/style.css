@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: LGPL-3.0-or-later */
 :root {
   --hover-bg: color-mix(in srgb, var(--surface-2), var(--text) 8%);
   --button-text: color-mix(in srgb, var(--text) 80%, var(--muted));
@@ -118,6 +119,11 @@ button, select, input { font: inherit; color: inherit; }
   width: 22px; height: 22px; border-radius: 6px;
   background: conic-gradient(from 45deg, var(--accent), var(--info), var(--accent));
 }
+
+.topbar-end { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.source { color: var(--muted); font-size: 13px; text-decoration: none; }
+.source:hover { color: var(--text); text-decoration: underline; }
+.badge.remote { color: var(--info); border-color: var(--info); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40vw; }
 
 h1 { font-size: 16px; font-weight: 600; margin: 0; white-space: nowrap; }
 h1 span { color: var(--muted); font-weight: 500; }
@@ -335,6 +341,13 @@ button.ghost:hover:not(:disabled) { background: var(--hover-bg); }
   border-radius: 7px;
   padding: 7px 9px;
 }
+
+/* ?layout=viewer: just the machine, for embedding next to another app's own controls. */
+[data-layout='viewer'] .topbar, [data-layout='viewer'] .panel { display: none; }
+[data-layout='viewer'] .layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+
+.button.file:has(input:disabled) { opacity: 0.45; cursor: default; pointer-events: none; }
+input:disabled { opacity: 0.45; }
 
 @media (max-width: 860px) {
   .layout { grid-template-columns: 1fr; grid-template-rows: 55vh auto; }

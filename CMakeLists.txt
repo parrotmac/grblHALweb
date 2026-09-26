@@ -55,7 +55,7 @@ target_link_libraries(firmware PRIVATE grbl)
 # grblHAL's main loop never returns, so it needs stack switching to hand
 # control back to the browser. JSPI suspends the wasm stack natively (no
 # overhead); Asyncify instruments the code instead and works in every engine.
-# The host picks one at runtime (see web/src/firmware.js).
+# The host picks one at runtime (see web/src/sim/firmware.js).
 foreach(_async JSPI ASYNCIFY)
     string(TOLOWER ${_async} _name)
     set(_target grblhal-${_name})
@@ -77,13 +77,13 @@ foreach(_async JSPI ASYNCIFY)
         -s${_async}=1
     )
 
-    # The npm package (pkg/) ships the builds from pkg/firmware.
+    # The web app loads the builds from web/src/firmware.
     add_custom_command(TARGET ${_target} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/pkg/firmware
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/web/src/firmware
         COMMAND ${CMAKE_COMMAND} -E copy
             $<TARGET_FILE:${_target}>
             $<TARGET_FILE_DIR:${_target}>/${_target}.wasm
-            ${CMAKE_SOURCE_DIR}/pkg/firmware/
+            ${CMAKE_SOURCE_DIR}/web/src/firmware/
         VERBATIM
     )
 endforeach()

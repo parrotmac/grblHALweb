@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
 // Demo job in work coordinates: a rounded-rectangle profile, a spiral pocket
 // and an engraved star. Work zero is the top left-front corner of the stock.
 

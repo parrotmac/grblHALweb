@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: LGPL-3.0-or-later
 // Headless runner: boots the wasm firmware under Node, streams G-code/commands
 // to it line by line (waiting for ok/error like a sender would), prints the
 // responses and exits once everything has been acknowledged and motion stopped.
@@ -6,7 +7,7 @@
 //   node tools/run-headless.mjs [-t speed] [-e nvs.bin] [-s samples.csv] [file.nc | -c "cmd" ...]
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { GrblHAL, loadFirmware } from '../pkg/src/index.js';
+import { GrblHAL, loadFirmware } from '../web/src/sim/index.js';
 
 const args = process.argv.slice(2);
 let speed = 0, nvsFile = null, samplesFile = null;

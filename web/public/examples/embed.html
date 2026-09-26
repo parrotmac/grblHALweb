@@ -1,0 +1,83 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: LGPL-3.0-or-later -->
+<!-- Drives the simulator app over postMessage, in an iframe or a separate window. -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Embedding example</title>
+    <style>
+      :root { color-scheme: light dark; --border: #8884; }
+      body { margin: 0; font: 14px/1.4 system-ui, sans-serif; display: grid; grid-template-columns: minmax(0, 1fr) 340px; height: 100vh; }
+      iframe { border: 0; width: 100%; height: 100%; }
+      aside { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-left: 1px solid var(--border); min-height: 0; }
+      pre { flex: 1; overflow: auto; margin: 0; font: 12px ui-monospace, monospace; border: 1px solid var(--border); padding: 6px; }
+      form, .row { display: flex; gap: 6px; flex-wrap: wrap; }
+      input { flex: 1; font: 13px ui-monospace, monospace; }
+      @media (max-width: 700px) { body { grid-template-columns: 1fr; grid-template-rows: 50vh auto; } aside { border-left: 0; } }
+    </style>
+  </head>
+  <body>
+    <iframe id="app" src="../?layout=viewer" title="grblHAL simulator"></iframe>
+    <aside>
+      <div class="row">
+        <button id="open">Use a separate window</button>
+        <button id="reboot">Reboot</button>
+      </div>
+      <div class="row">
+        <button data-send="$H">$H</button>
+        <button data-send="$X">$X</button>
+        <button data-send="G0 X50 Y50">G0 X50 Y50</button>
+        <button data-rt="?">?</button>
+        <button data-rt="!">!</button>
+        <button data-rt="~">~</button>
+      </div>
+      <pre id="log"></pre>
+      <form id="cmd"><input id="line" placeholder="G-code or $ command" autocomplete="off" /><button>Send</button></form>
+    </aside>
+
+    <script type="module">
+      import { connect } from '../client.js';
+
+      const $ = (id) => document.getElementById(id);
+      const print = (text) => {
+        $('log').textContent += text + '\n';
+        $('log').scrollTop = $('log').scrollHeight;
+      };
+
+      let sim = null;
+
+      async function attach(target) {
+        sim?.close();
+        sim = null;
+        print('Connecting…');
+        const client = await connect(target);
+        print(`Connected: firmware ${client.variant ?? 'loading'}`);
+        client.onLine = print;
+        client.onStarted = (variant) => print(`Firmware started (${variant})`);
+        client.onCrash = (message) => print(`Crashed: ${message}`);
+        client.onClose = (reason) => {
+          print(`Disconnected: ${reason}`);
+          if (sim === client) sim = null;
+        };
+        client.write('$I\n');
+        sim = client;
+      }
+
+      attach($('app').contentWindow).catch((err) => print(err.message));
+
+      $('open').onclick = () => {
+        const win = window.open('../', 'grblhal-sim', 'popup,width=1200,height=800');
+        if (win) attach(win).catch((err) => print(err.message));
+      };
+      $('reboot').onclick = () => sim?.reboot();
+      for (const b of document.querySelectorAll('[data-send]')) b.onclick = () => sim?.write(b.dataset.send + '\n');
+      for (const b of document.querySelectorAll('[data-rt]')) b.onclick = () => sim?.realtime(b.dataset.rt);
+      $('cmd').onsubmit = (e) => {
+        e.preventDefault();
+        if ($('line').value.trim()) sim?.write($('line').value.trim() + '\n');
+        $('line').value = '';
+      };
+    </script>
+  </body>
+</html>

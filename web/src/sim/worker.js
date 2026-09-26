@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
 // Web Worker entry point: runs the firmware off the main thread for
 // GrblHALWorker (worker-client.js). Everything the firmware hands over at a
 // yield - serial output, position samples, the simulated clock - goes back to

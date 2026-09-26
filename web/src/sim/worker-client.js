@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
 // Runs the firmware in a dedicated Web Worker, with the same surface as
 // GrblHAL: nothing on the page's main thread slows simulated time, and stop()
 // ends with worker.terminate().

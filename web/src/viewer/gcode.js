@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
 // Minimal G-code interpreter for the toolpath preview: linear and XY-plane arc
 // motion, absolute/relative and mm/inch modes. Everything else is ignored;
 // the firmware is the authority on what the program really does.

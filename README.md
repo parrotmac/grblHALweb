@@ -1,8 +1,16 @@
 # grblHALweb
 
 grblHAL compiled to WebAssembly, with a simulated MCU driver, running on a
-single thread in the browser (or Node). The goal is a realistic machine
-simulator with a three.js viewer.
+single thread in the browser (or Node). It is a standalone web app: a realistic
+machine simulator with a three.js viewer, a console and a small G-code sender.
+
+Other web apps, such as G-code senders and CAM tools, use it by loading it in
+an iframe or a window they open. They drive it over `postMessage` the way they
+would drive a controller over a serial port. [PROTOCOL.md](PROTOCOL.md)
+describes the API, and the app serves a small client for it at `client.js`.
+
+**Live:** https://parrotmac.github.io/grblHALweb/ (built from `master`), and
+an [embedding example](https://parrotmac.github.io/grblHALweb/examples/embed.html).
 
 ## Layout
 
@@ -16,14 +24,15 @@ src/             wasm driver, derived from grblHAL/Simulator
   mcu.c          emulated timers / GPIO / UART
   driver.c       grblHAL HAL implementation on top of mcu.c
   serial.c       UART stream
-pkg/             npm package @parrotmac/grblhal-web (see pkg/README.md)
-  src/grblhal.js       GrblHAL: runs the firmware on the calling thread
-  src/worker-client.js GrblHALWorker: the same API, firmware in a Web Worker
-  src/worker.js        the worker entry point
-  src/viewer/          MachineViewer (three.js), the ./viewer entry point
-  firmware/            the two builds, copied here by CMake (not committed)
-web/             demo app (Vite + three.js), uses the package through a link
+web/             the app (Vite + three.js)
+  src/main.js    UI wiring
+  src/bridge.js  postMessage API, app side
   src/sender.js  character-counting G-code sender, status parsing
+  src/sim/       firmware host: GrblHAL (calling thread), GrblHALWorker (Web Worker)
+  src/viewer/    MachineViewer (three.js)
+  src/firmware/  the two builds, copied here by CMake (not committed)
+  public/client.js           postMessage API, embedder side
+  public/examples/embed.html embedding example
 tools/           headless Node runner
 ```
 
@@ -33,30 +42,30 @@ tools/           headless Node runner
 direnv allow                      # or: nix develop
 git submodule update --init
 emcmake cmake -B build -G Ninja
-cmake --build build               # build/grblhal-{jspi,asyncify}.{mjs,wasm}, copied to pkg/firmware
+cmake --build build               # build/grblhal-{jspi,asyncify}.{mjs,wasm}, copied to web/src/firmware
 ```
 
-## Run in the browser
+## Run the app
 
 ```sh
 cd web && pnpm install && pnpm dev
 ```
+
+`pnpm build` writes a static site to `web/dist`, which can be served from
+any path. It links to the grblHALweb and grblHAL core commits it was built
+from. That is the corresponding source for the firmware it serves.
 
 The page loads the JSPI build where the engine supports it (Chrome,
 Firefox) and the Asyncify build elsewhere. A fresh browser profile gets a
 demo machine preset (300×200×80 mm, homing and hard/soft limits on, 24k
 spindle, a G54 offset over the table); settings live in localStorage.
 
-## The package
+`/examples/embed.html` drives the app from another page, in an iframe or a
+separate window.
 
-`pkg/` is published to npm as `@parrotmac/grblhal-web`; its README covers
-installing and using it. CI (`.github/workflows/package.yml`) builds the
-firmware with this flake, runs a smoke test and packs the package on every
-push.
-
-`npm pack` in `pkg/` makes the same tarball locally. Its prepack step writes
-`firmware/build-info.json`, recording the grblHALweb and grblHAL core commits
-the firmware was built from.
+CI (`.github/workflows/build.yml`) builds the firmware with this flake,
+runs a smoke test and builds the app on every push and pull request, and
+deploys `master` to GitHub Pages.
 
 ## Run headless
 
@@ -92,3 +101,21 @@ calls `emscripten_sleep()`. That call is the only point where control returns
 to the event loop: JSPI suspends the wasm stack there (Asyncify when built
 that way). New input from JS is pulled when it resumes, so wasm is never
 re-entered.
+
+## License
+
+grblHALweb's own code is licensed under the GNU Lesser General Public License,
+version 3 or later ([COPYING.LESSER](COPYING.LESSER), which builds on the GPL
+in [COPYING](COPYING)). That covers the web app, the firmware host, the viewer,
+the sender, the postMessage client and the tools.
+
+The firmware is licensed under the **GNU General Public License, version 3 or
+later**. That covers the WebAssembly builds and everything compiled into them:
+grblHAL core (`src/grbl`), the simulator driver derived from grblHAL/Simulator
+(`src/driver.c`, `mcu.c`, `serial.c`, © Terje Io) and the rest of `src/`. See
+[src/COPYING](src/COPYING). The built app serves this firmware to browsers,
+and it links to the exact source commits it was built from.
+
+Pages that embed the app talk to it only through `postMessage` messages
+([PROTOCOL.md](PROTOCOL.md)), the way a sender talks to a controller over a
+serial port. They don't include or link any of its code.

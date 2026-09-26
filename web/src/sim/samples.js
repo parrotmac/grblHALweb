@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
 // Layout of one position sample (onSamples): `stride` doubles per sample, of
 // which the first AXES are these fields, then N physical axis positions (mm,
 // integrated from the step/dir outputs, 0 = minimum end of travel), then N
