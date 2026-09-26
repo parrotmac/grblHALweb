@@ -31,6 +31,7 @@
 #include "grbl/crc.h"
 #include "grbl/planner.h"
 #include "grbl/state_machine.h"
+#include "grbl/nvs_buffer.h"
 
 #define TICKS_PER_MS (F_CPU / 1000)
 #define YIELD_AHEAD_MS 4.0      // sleep only once simulated time is this far ahead of wall time
@@ -73,7 +74,20 @@ static struct {
     int32_t steps[N_AXIS];      // physical motor position, 0 = minimum end of travel
     bool stepped;
     uint16_t limits;
+    bool probe;                 // the tool tip is touching the stock, the plate or the table
 } machine;
+
+// What the host has put on the machine (see host_fixture). Physical mm,
+// 0 = minimum end of travel, Z up with the table at Z = 0. The Z axis position
+// is the collet face: the tool tip is tool_length below it.
+#define FIXTURE_N 10
+static struct {
+    double version;
+    float tool_length;
+    bool stock;
+    float stock_min[3], stock_max[3];
+    float plate;                // touch plate thickness on top of whatever is under the tool, 0 = none
+} fixture = { .tool_length = SIM_DEFAULT_TOOL_LENGTH };
 
 static struct {
     bool on, ccw;
@@ -130,6 +144,15 @@ EM_JS(int, host_stop_requested, (void), {
     return Module.host.stopRequested() ? 1 : 0;
 });
 
+// Fills buf with the host's fixture (see pull_fixture) and returns its version,
+// or returns 0 without touching buf when the host has none.
+EM_JS(double, host_fixture, (double *buf, int n), {
+    const f = Module.host.fixture ? Module.host.fixture() : null;
+    if (!f) return 0;
+    HEAPF64.set(f.values.subarray(0, n), buf >> 3);
+    return f.version;
+});
+
 static inline double sim_ms (void)
 {
     return (double)sim.masterclock / (double)TICKS_PER_MS;
@@ -166,6 +189,31 @@ static void pull_input (void)
 }
 
 
+static void update_probe (void);
+static void write_probe_pin (void);
+
+// Host fixture layout: tool length, stock present, stock min xyz, stock max xyz, plate.
+static void pull_fixture (void)
+{
+    double buf[FIXTURE_N];
+    double version = host_fixture(buf, FIXTURE_N);
+
+    if(version == 0.0 || version == fixture.version)
+        return;
+
+    fixture.version = version;
+    fixture.tool_length = (float)buf[0];
+    fixture.stock = buf[1] != 0.0;
+    for(uint_fast8_t i = 0; i < 3; i++) {
+        fixture.stock_min[i] = (float)buf[2 + i];
+        fixture.stock_max[i] = (float)buf[5 + i];
+    }
+    fixture.plate = (float)buf[8];
+
+    update_probe();
+    samples.dirty = true;
+}
+
 // The only place control is handed back to the host event loop.
 static void sim_yield (double ms)
 {
@@ -182,12 +230,21 @@ static void sim_yield (double ms)
 
     // grblHAL's main() never returns, so the host stops the firmware by asking
     // here: exit() unwinds the whole wasm stack and settles callMain().
-    if(host_stop_requested())
+    if(host_stop_requested()) {
+        // grblHAL buffers some NVS writes (e.g. G10 work offsets) in RAM until
+        // its main loop next idles: save them now, or they are lost.
+#if NVSDATA_BUFFER_ENABLE
+        nvs_buffer_sync_physical();
+#endif
+        if(nvs_dirty)
+            host_nvs_save(nvs, sizeof(nvs));
         exit(0);
+    }
 
     pace.last_yield_ms = emscripten_get_now();
     pace.speed = host_speed();
     pull_input();
+    pull_fixture();
 }
 
 static bool machine_is_busy (void)
@@ -294,6 +351,35 @@ static void update_limits (void)
         machine.limits = hit;
         mcu_gpio_in(&gpio[LIMITS_PORT0], hit ^ settings.limits.invert.mask, AXES_BITMASK);
     }
+
+    update_probe();
+}
+
+// A probe (touch plate and clip, or a conductive workpiece) triggers when the
+// tool tip reaches the surface under it: the top of the stock, or the table
+// beside it, plus the plate if there is one. The pin is wired the way $6
+// says, like the limit switches.
+static void update_probe (void)
+{
+    float x = (float)machine.steps[X_AXIS] / settings.axis[X_AXIS].steps_per_mm;
+    float y = (float)machine.steps[Y_AXIS] / settings.axis[Y_AXIS].steps_per_mm;
+    float tip = (float)machine.steps[Z_AXIS] / settings.axis[Z_AXIS].steps_per_mm - fixture.tool_length;
+
+    bool over_stock = fixture.stock &&
+                       x >= fixture.stock_min[0] && x <= fixture.stock_max[0] &&
+                        y >= fixture.stock_min[1] && y <= fixture.stock_max[1];
+    float surface = (over_stock ? fixture.stock_max[2] : 0.0f) + fixture.plate;
+    bool contact = tip <= surface + 0.0005f;
+
+    if(contact != machine.probe) {
+        machine.probe = contact;
+        write_probe_pin();
+    }
+}
+
+static void write_probe_pin (void)
+{
+    mcu_gpio_in(&gpio[PROBE_PORT], (machine.probe ^ settings.probe.invert_probe_pin) ? PROBE_BIT : 0, PROBE_BIT);
 }
 
 // Power on somewhere inside the envelope, spindle raised.
@@ -311,6 +397,9 @@ void sim_machine_init (void)
 
     machine.limits = 0;
     mcu_gpio_in(&gpio[LIMITS_PORT0], settings.limits.invert.mask, AXES_BITMASK);
+    machine.probe = false;
+    write_probe_pin();
+    update_probe();
     samples.dirty = true;
 }
 
@@ -324,6 +413,7 @@ void sim_machine_settings_changed (void)
             machine.steps[i] = power_on_steps(i);
     }
 
+    write_probe_pin(); // $6 may have changed
     machine.stepped = true;
     samples.dirty = true;
 }

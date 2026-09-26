@@ -4,8 +4,8 @@
 // yield - serial output, position samples, the simulated clock - goes back to
 // the page as one 'yield' message.
 //
-// Page -> worker: start { variant, speed, nvs, samples }, input { bytes },
-//                 speed { value }, stop
+// Page -> worker: start { variant, speed, nvs, samples, fixture }, input { bytes },
+//                 speed { value }, fixture { value }, stop
 // Worker -> page: ready { variant }, yield { time, bytes?, samples? }, nvs { data },
 //                 crash { message }, stopped
 
@@ -13,6 +13,7 @@ import { GrblHAL } from './grblhal.js';
 import { loadFirmware } from './firmware.js';
 
 let sim = null;
+let fixture = null;     // the latest fixture, for a firmware still loading
 const early = [];       // input that arrived before the firmware was loaded
 let bytes = [];
 let samples = [];
@@ -47,7 +48,8 @@ function flush(time) {
   postMessage(msg, transfer);
 }
 
-async function start({ variant, speed, nvs, samples: wantSamples }) {
+async function start({ variant, speed, nvs, samples: wantSamples, fixture: initial }) {
+  fixture ??= initial;
   const loaded = await loadFirmware(variant);
   sim = new GrblHAL({
     speed,
@@ -68,6 +70,7 @@ async function start({ variant, speed, nvs, samples: wantSamples }) {
     },
     nvsSave: (data) => postMessage({ type: 'nvs', data }, [data.buffer]),
   });
+  if (fixture) sim.fixture = fixture;
   for (const b of early.splice(0)) sim.write(b);
   await sim.start(loaded.factory);
   postMessage({ type: 'ready', variant: loaded.variant });
@@ -88,6 +91,10 @@ self.onmessage = async ({ data: msg }) => {
       break;
     case 'speed':
       if (sim) sim.speed = msg.value;
+      break;
+    case 'fixture':
+      fixture = msg.value;
+      if (sim) sim.fixture = fixture;
       break;
     case 'stop':
       await sim?.stop();

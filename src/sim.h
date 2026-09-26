@@ -28,6 +28,9 @@
 #endif
 
 #define SIM_BAUD_RATE 115200
+
+// Tool length (stick-out below the collet face, mm) until the host sets one.
+#define SIM_DEFAULT_TOOL_LENGTH 22.0f
 #define SIM_NVS_SIZE 4096
 
 // There is only one thread: grblHAL's foreground code. The simulated MCU

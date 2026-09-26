@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 // three.js view of the simulated machine, fed by the firmware's position
 // samples (onSamples). Everything lives in physical machine coordinates (mm,
-// 0 = minimum end of travel, Z up) as integrated from the step/dir outputs;
-// the program preview is placed at the work origin grblHAL is using.
+// 0 = minimum end of travel, Z up, the table at Z = 0) as integrated from the
+// step/dir outputs. The Z axis position is the collet face; the tool tip is
+// the tool's length below it, and the trail, the work origin and the program
+// preview are all at the tip. The preview is placed at the work origin
+// grblHAL is using; the stock, if any, is placed on the machine itself.
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -12,6 +15,10 @@ import { parseGcode } from './gcode.js';
 export { parseGcode };
 
 const TRAIL_MIN_STEP_MM = 0.01;
+
+// The tool until setTool() says otherwise: a 1/8" end mill sticking out 22 mm
+// (DEFAULT_TOOL_LENGTH in ../sim/grblhal.js).
+export const DEFAULT_TOOL = Object.freeze({ diameter: 3.175, length: 22, shape: 'flat', angle: 90 });
 const STATE_ALARM = 1 << 0;   // sys_state_t bits, grbl/system.h
 const STATE_HOMING = 1 << 2;
 
@@ -41,7 +48,8 @@ export const DARK_THEME = Object.freeze({
 
 export class MachineViewer {
   // Machine state from the latest sample
-  position = null;        // physical tool position [x, y, z], mm
+  position = null;        // physical position of the collet face [x, y, z], mm
+  tip = null;             // physical position of the tool tip [x, y, z], mm
   rpm = 0;                // negative = counter-clockwise
   coolant = 0;
   state = 0;              // grblHAL sys_state_t bits
@@ -56,6 +64,8 @@ export class MachineViewer {
   #mposOffset = null;     // physical - grbl MPos
   #nAxes = 3;
   #previewProvisional;
+  #previewVisible = true;
+  #toolSpec = DEFAULT_TOOL;
   #lastFrame = 0;
 
   constructor(container, options = {}) {
@@ -198,8 +208,46 @@ export class MachineViewer {
     this.previewRapids = new THREE.LineSegments(split(true), new THREE.LineDashedMaterial({ color: this.#theme.rapid, dashSize: 2, gapSize: 2, transparent: true, opacity: 0.5 }));
     this.previewRapids.computeLineDistances();
     this.preview.add(this.previewLines, this.previewRapids);
+    this.preview.visible = this.#previewVisible;
     this.#previewProvisional = undefined;
     this.scene.add(this.preview);
+  }
+
+  // Shows or hides the program preview (it's shown until told otherwise).
+  setProgramVisible(visible) {
+    this.#previewVisible = !!visible;
+    if (this.preview) this.preview.visible = this.#previewVisible;
+  }
+
+  // The stock on the machine, in physical coordinates: { min: [x, y, z], max: [x, y, z] }
+  // with the table at Z = 0, or null for none. It stays put whatever the work origin.
+  setStock(box) {
+    if (this.stock) {
+      this.scene.remove(this.stock);
+      disposeTree(this.stock);
+      this.stock = null;
+    }
+    if (!box) return;
+    const size = [0, 1, 2].map((i) => Math.max(0.01, box.max[i] - box.min[i]));
+    const geometry = new THREE.BoxGeometry(...size);
+    this.stock = new THREE.Group();
+    this.stock.add(
+      new THREE.Mesh(
+        geometry,
+        new THREE.MeshStandardMaterial({ color: 0xd9b27c, roughness: 0.85, transparent: true, opacity: 0.55, depthWrite: false }),
+      ),
+      new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: 0xa87f4d })),
+    );
+    this.stock.position.set(...[0, 1, 2].map((i) => (box.min[i] + box.max[i]) / 2));
+    this.scene.add(this.stock);
+  }
+
+  // The tool in the collet: { diameter, length (below the collet face), shape:
+  // 'flat' | 'ball' | 'v', angle (V bits, degrees) }, mm; null for the default.
+  setTool(tool) {
+    this.#toolSpec = { ...DEFAULT_TOOL, ...(tool ?? {}) };
+    this.#buildCutter();
+    if (this.position) this.tool.position.set(...this.position);
   }
 
   // Frames the whole machine envelope.
@@ -225,12 +273,14 @@ export class MachineViewer {
     for (let i = 0; i < count; i++) {
       const o = i * stride;
       const p = [data[o + A], data[o + A + 1], nAxes > 2 ? data[o + A + 2] : 0];
-      this.#appendTrail(p, data[o + SAMPLE.RPM] !== 0);
+      const tip = [p[0], p[1], p[2] - this.#toolSpec.length];
+      this.#appendTrail(tip, data[o + SAMPLE.RPM] !== 0);
       this.state = data[o + SAMPLE.STATE];
       this.rpm = data[o + SAMPLE.RPM];
       this.coolant = data[o + SAMPLE.COOLANT];
       this.homed = data[o + SAMPLE.HOMED];
       this.position = p;
+      this.tip = tip;
       this.#nAxes = nAxes;
       // where grbl's machine origin sits on the physical machine
       this.#mposOffset = [0, 1, 2].map((k) => (k < nAxes ? data[o + A + k] - data[o + A + nAxes + k] : 0));
@@ -260,7 +310,8 @@ export class MachineViewer {
     const provisional = !allHomed && !!(this.state & STATE_ALARM) && !!this.#homing.travel;
     const offset = provisional ? this.#homedFrameOffset() : this.#mposOffset;
 
-    this.workOrigin.position.set(...this.#wco.map((w, i) => w + offset[i]));
+    // grblHAL's positions are the collet face's; work coordinates are the tip's.
+    this.workOrigin.position.set(...this.#wco.map((w, i) => w + offset[i] - (i === 2 ? this.#toolSpec.length : 0)));
     if (!this.preview) return;
     this.preview.position.copy(this.workOrigin.position);
     if (this.#previewProvisional !== provisional) {
@@ -299,35 +350,64 @@ export class MachineViewer {
     const metal = new THREE.MeshStandardMaterial({ color: 0xb8bec6, metalness: 0.8, roughness: 0.35 });
     const dark = new THREE.MeshStandardMaterial({ color: 0x2a2f36, metalness: 0.4, roughness: 0.6 });
     this.bitMaterial = new THREE.MeshStandardMaterial({ color: 0xd9dde2, metalness: 0.9, roughness: 0.25 });
+    this.fluteMaterial = dark;
 
-    const up = (mesh, z) => {
-      mesh.rotation.x = Math.PI / 2;
-      mesh.position.z = z;
-      return mesh;
-    };
-
-    // Stacked from the tool tip up: cutter (0-22), collet nut (22-32), spindle
-    // nose (32-40), spindle body (40-110). Flute on the cutter so rotation reads.
-    const nut = up(new THREE.Mesh(new THREE.CylinderGeometry(12, 14, 10, 6), metal), 27);
-    const nose = up(new THREE.Mesh(new THREE.CylinderGeometry(16, 13, 8, 40), metal), 36);
-    const body = up(new THREE.Mesh(new THREE.CylinderGeometry(26, 26, 70, 40), dark), 75);
-    this.cutter = new THREE.Group();
-    const shank = up(new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 22, 24), this.bitMaterial), 11);
-    const flute = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.5, 12), dark);
-    flute.position.z = 6;
-    this.cutter.add(shank, flute);
-    this.tool.add(body, nose, nut, this.cutter);
+    // Stacked up from the collet face (the tool group's origin, the Z axis
+    // position): collet nut (0-10), spindle nose (10-18), spindle body (18-88).
+    // The cutter hangs below it (#buildCutter).
+    const nut = up(new THREE.Mesh(new THREE.CylinderGeometry(12, 14, 10, 6), metal), 5);
+    const nose = up(new THREE.Mesh(new THREE.CylinderGeometry(16, 13, 8, 40), metal), 14);
+    const body = up(new THREE.Mesh(new THREE.CylinderGeometry(26, 26, 70, 40), dark), 53);
+    this.tool.add(body, nose, nut);
+    this.#buildCutter();
 
     this.coolantCone = new THREE.Mesh(
       new THREE.ConeGeometry(6, 14, 20, 1, true),
       new THREE.MeshBasicMaterial({ color: 0x4aa8ff, transparent: true, opacity: 0.25, side: THREE.DoubleSide }),
     );
     this.coolantCone.rotation.x = -Math.PI / 2;
-    this.coolantCone.position.set(-10, 0, 10);
+    this.coolantCone.position.set(-10, 0, 10 - DEFAULT_TOOL.length);
     this.coolantCone.visible = false;
     this.tool.add(this.coolantCone);
 
     this.scene.add(this.tool);
+  }
+
+  // The cutter, from the tip (-length) up to the collet face (0), with a flute
+  // on it so rotation reads.
+  #buildCutter() {
+    const rotation = this.cutter?.rotation.z ?? 0;
+    if (this.cutter) {
+      this.tool.remove(this.cutter);
+      this.cutter.traverse((o) => o.geometry?.dispose());
+    }
+    const { diameter, length, shape, angle } = this.#toolSpec;
+    const r = Math.max(0.05, diameter / 2);
+    const L = Math.max(0.5, length);
+    this.cutter = new THREE.Group();
+    // The cutting end: a cone for V bits, a half sphere for ball ends.
+    const tipHeight = shape === 'v' ? Math.min(L, r / Math.tan(((angle || 90) * Math.PI) / 360)) : shape === 'ball' ? Math.min(L, r) : 0;
+    if (shape === 'v' && tipHeight > 0) {
+      const cone = up(new THREE.Mesh(new THREE.ConeGeometry(r, tipHeight, 32), this.bitMaterial), -L + tipHeight / 2);
+      cone.rotation.x = -Math.PI / 2; // point down
+      this.cutter.add(cone);
+    } else if (shape === 'ball') {
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), this.bitMaterial);
+      ball.rotation.x = Math.PI / 2; // hemisphere pointing down
+      ball.position.z = -L + r;
+      this.cutter.add(ball);
+    }
+    const shankLength = L - tipHeight;
+    if (shankLength > 0) this.cutter.add(up(new THREE.Mesh(new THREE.CylinderGeometry(r, r, shankLength, 24), this.bitMaterial), -shankLength / 2));
+    const fluteLength = Math.min(shankLength, Math.max(2, L * 0.55));
+    if (fluteLength > 0) {
+      const flute = new THREE.Mesh(new THREE.BoxGeometry(r * 2.1, Math.max(0.2, r * 0.3), fluteLength), this.fluteMaterial);
+      flute.position.z = -L + tipHeight + fluteLength / 2;
+      this.cutter.add(flute);
+    }
+    this.cutter.rotation.z = rotation;
+    this.tool.add(this.cutter);
+    if (this.coolantCone) this.coolantCone.position.z = 10 - L;
   }
 
   #buildTrail() {
@@ -413,6 +493,13 @@ export class MachineViewer {
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
   }
+}
+
+// A cylinder (built along Y) stood up along Z, centred at height z.
+function up(mesh, z) {
+  mesh.rotation.x = Math.PI / 2;
+  mesh.position.z = z;
+  return mesh;
 }
 
 function parseCssColor(css) {

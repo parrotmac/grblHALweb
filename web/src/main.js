@@ -3,7 +3,7 @@
 import './style.css';
 import { GrblHALWorker, jspiSupported } from './sim/index.js';
 import { Sender } from './sender.js';
-import { MachineViewer, parseGcode } from './viewer/index.js';
+import { DEFAULT_TOOL, MachineViewer, parseGcode } from './viewer/index.js';
 import { Bridge, PROTOCOL } from './bridge.js';
 import { demoProgram, machinePreset, PRESET_VERSION } from './demo.js';
 
@@ -60,6 +60,9 @@ const VARIANT_NAMES = { jspi: 'JSPI', asyncify: 'Asyncify' };
 
 let sim = null;
 let speed = 1;
+// What a client put on the machine: the tool, the stock and a touch plate
+// (see the stock, tool and probe messages in PROTOCOL.md). Kept across reboots.
+const fixture = { toolLength: DEFAULT_TOOL.length, stock: null, plate: 0 };
 let freshNvs = false;
 let rateWindow = { t: 0, wall: performance.now() };
 
@@ -98,6 +101,7 @@ async function boot() {
     onClock: (time) => bridge.send({ type: 'clock', time }),
     nvsLoad: loadNvs,
     nvsSave: saveNvs,
+    fixture: { ...fixture },
     onCrash(err) {
       print(`Firmware crashed: ${err?.message ?? err}`, 'error');
       bridge.send({ type: 'crashed', message: String(err?.message ?? err) });
@@ -209,6 +213,7 @@ bridge.onConnect = (origin) => {
     variant: sim?.variant ?? null,
     speed,
     source,
+    features: FEATURES,
   });
 };
 
@@ -241,8 +246,51 @@ bridge.onMessage = (msg) => {
     case 'reboot':
       reboot({ factory: !!msg.factory }).catch(() => {});
       break;
+    case 'stock': {
+      const box = validBox(msg.box);
+      if (box === undefined) break;
+      fixture.stock = box;
+      viewer.setStock(box);
+      applyFixture();
+      break;
+    }
+    case 'tool': {
+      const tool = msg.tool;
+      if (tool !== null && !(tool && typeof tool === 'object' && positive(tool.diameter) && positive(tool.length))) break;
+      viewer.setTool(tool && { diameter: tool.diameter, length: tool.length, shape: tool.shape, angle: tool.angle });
+      fixture.toolLength = tool ? tool.length : DEFAULT_TOOL.length;
+      applyFixture();
+      break;
+    }
+    case 'probe':
+      if (msg.plate === null || (typeof msg.plate === 'number' && msg.plate >= 0)) {
+        fixture.plate = msg.plate ?? 0;
+        applyFixture();
+      }
+      break;
+    case 'view':
+      if (typeof msg.program === 'boolean') viewer.setProgramVisible(msg.program);
+      break;
   }
 };
+
+// The optional messages this app understands, for clients to check (connected.features).
+const FEATURES = ['stock', 'tool', 'probe', 'view'];
+
+const positive = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0;
+
+// A stock box from a client: { min: [x, y, z], max: [x, y, z] }, null to clear,
+// or undefined if it isn't one.
+function validBox(box) {
+  if (box === null) return null;
+  const ok = (a) => Array.isArray(a) && a.length === 3 && a.every((v) => typeof v === 'number' && Number.isFinite(v));
+  if (!box || !ok(box.min) || !ok(box.max) || box.min.some((v, i) => v > box.max[i])) return undefined;
+  return { min: [...box.min], max: [...box.max] };
+}
+
+function applyFixture() {
+  if (sim) sim.fixture = { ...fixture };
+}
 
 // --- Status ------------------------------------------------------------------
 

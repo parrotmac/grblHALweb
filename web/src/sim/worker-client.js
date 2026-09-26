@@ -12,6 +12,7 @@ export class GrblHALWorker {
   #worker = null;
   #output = serialOutput(this);
   #speed = 1;
+  #fixture = null;
   #stopped = null;
   #onStopped = null;
   #pending = [];          // input written before start()
@@ -47,6 +48,16 @@ export class GrblHALWorker {
   set speed(value) {
     this.#speed = value;
     this.#worker?.postMessage({ type: 'speed', value });
+  }
+
+  // The tool, stock and touch plate on the machine; see GrblHAL's fixture.
+  get fixture() {
+    return this.#fixture;
+  }
+
+  set fixture(value) {
+    this.#fixture = value;
+    this.#worker?.postMessage({ type: 'fixture', value });
   }
 
   // Boots the firmware in a new worker; resolves once it is running.
@@ -104,6 +115,7 @@ export class GrblHALWorker {
         speed: this.#speed,
         nvs: hasNvs ? nvs : null,
         samples: this.samples && !!this.onSamples,
+        fixture: this.#fixture,
       });
       for (const bytes of this.#pending.splice(0)) worker.postMessage({ type: 'input', bytes }, [bytes.buffer]);
     });
