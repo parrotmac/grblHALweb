@@ -35,6 +35,7 @@ export class GrblHALClient {
   running;                // the firmware is booted
   simTime = 0;            // simulated seconds at the last yield
   source;                 // { repo, commit, dirty, core } the app was built from
+  features;               // the optional messages the app understands, e.g. ['stock', 'tool', 'probe', 'view']
 
   // Callbacks
   onBytes = null;         // (Uint8Array) raw serial output
@@ -53,6 +54,7 @@ export class GrblHALClient {
     this.variant = hello.variant;
     this.running = hello.running;
     this.source = hello.source;
+    this.features = hello.features ?? [];
     port.onmessage = ({ data }) => this.#receive(data);
   }
 
@@ -83,6 +85,26 @@ export class GrblHALClient {
   /** Shows a program preview in the app's machine view; null clears it. */
   showProgram(text, name) {
     this.#post({ type: 'program', text, name });
+  }
+
+  /** Puts a workpiece on the machine, in physical coordinates ({ min: [x, y, z], max: [x, y, z] }); null removes it. */
+  setStock(box) {
+    this.#post({ type: 'stock', box });
+  }
+
+  /** The tool in the collet ({ diameter, length, shape?, angle? }, mm); null for the default. */
+  setTool(tool) {
+    this.#post({ type: 'tool', tool });
+  }
+
+  /** A touch plate of this thickness on top of the stock, for probing; null or 0 for none. */
+  setProbe(plate) {
+    this.#post({ type: 'probe', plate });
+  }
+
+  /** Shows or hides the program preview in the app's machine view. */
+  setView({ program }) {
+    this.#post({ type: 'view', program });
   }
 
   /** Power cycles the controller; `factory` erases its saved settings first. */

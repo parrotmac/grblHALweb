@@ -4,13 +4,16 @@
 // to it line by line (waiting for ok/error like a sender would), prints the
 // responses and exits once everything has been acknowledged and motion stopped.
 //
-//   node tools/run-headless.mjs [-t speed] [-e nvs.bin] [-s samples.csv] [file.nc | -c "cmd" ...]
+//   node tools/run-headless.mjs [-t speed] [-e nvs.bin] [-s samples.csv] [-f fixture.json] [file.nc | -c "cmd" ...]
+//
+// -f sets the fixture (tool length, stock box, touch plate), as JSON:
+// { "toolLength": 20, "stock": { "min": [x, y, z], "max": [x, y, z] }, "plate": 0 }
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { GrblHAL, loadFirmware } from '../web/src/sim/index.js';
 
 const args = process.argv.slice(2);
-let speed = 0, nvsFile = null, samplesFile = null;
+let speed = 0, nvsFile = null, samplesFile = null, fixture = null;
 const lines = [];
 
 while (args.length) {
@@ -18,6 +21,7 @@ while (args.length) {
   if (a === '-t') speed = parseFloat(args.shift());
   else if (a === '-e') nvsFile = args.shift();
   else if (a === '-s') samplesFile = args.shift();
+  else if (a === '-f') fixture = JSON.parse(readFileSync(args.shift(), 'utf8'));
   else if (a === '-c') lines.push(args.shift());
   else lines.push(...readFileSync(a, 'utf8').split(/\r?\n/));
 }
@@ -58,6 +62,7 @@ const sim = new GrblHAL({
     if (nvsFile) writeFileSync(nvsFile, data);
   },
 });
+if (fixture) sim.fixture = fixture;
 await sim.start((await loadFirmware('jspi')).factory);
 
 
