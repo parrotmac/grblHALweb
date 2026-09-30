@@ -19,7 +19,7 @@
 
 #include "sim.h"
 
-#include "grbl/grbllib.h"
+#include <grbl/grbllib.h>
 
 int main (void)
 {

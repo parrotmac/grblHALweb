@@ -25,7 +25,7 @@
 #ifndef _HAL_SERIAL_H_
 #define _HAL_SERIAL_H_
 
-#include "grbl/stream.h"
+#include <grbl/stream.h>
 
 const io_stream_t *serialInit (void);
 

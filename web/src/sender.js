@@ -18,7 +18,7 @@ export class Sender {
   #rxSize = 1023;       // usable RX buffer, refined from [OPT:]
   #pollTimer = null;
 
-  status = { state: 'Unknown', mpos: [0, 0, 0], wco: [0, 0, 0], feed: 0, rpm: 0, ov: [100, 100, 100], pins: '' };
+  status = { state: 'Unknown', mpos: [0, 0, 0], wco: [0, 0, 0], feed: 0, rpm: 0, ov: [100, 100, 100], pins: '', line: 0 };
   settings = new Map();
   program = null;       // { lines, sent, acked, errors, running }
 
@@ -28,6 +28,7 @@ export class Sender {
   onProgram = null;     // (program)
   onSettings = null;    // (settings)
   onReset = null;       // () controller (re)booted
+  onError = null;       // (text, error) a line was answered with an error
 
   // Reads the controller's output from `sim.onLine`, so it keeps parsing
   // status, settings and resets while another client drives the link.
@@ -65,10 +66,11 @@ export class Sender {
   }
 
   loadProgram(text) {
-    const lines = text
-      .split(/\r?\n/)
-      .map((l) => l.replace(/\(.*?\)|;.*$/g, '').trim())
-      .filter((l) => l.length && l !== '%');
+    this.loadLines(programLines(text).map((l) => l.text));
+  }
+
+  // A program as lines ready to send.
+  loadLines(lines) {
     this.program = { lines, sent: 0, acked: 0, errors: 0, running: false, done: false };
     this.onProgram?.(this.program);
   }
@@ -125,6 +127,7 @@ export class Sender {
     if (!line) return;
     this.#inFlightBytes -= line.len;
     line.resolve?.(error);
+    if (error) this.onError?.(line.text, error);
     if (line.program && this.program) {
       const p = this.program;
       p.acked++;
@@ -182,6 +185,7 @@ export class Sender {
     const s = this.status;
     s.state = fields[0];
     s.pins = '';
+    s.line = 0;
     for (const f of fields.slice(1)) {
       const [key, value] = f.split(':');
       const nums = () => value.split(',').map(Number);
@@ -193,9 +197,21 @@ export class Sender {
         case 'F': [s.feed] = nums(); break;
         case 'Ov': s.ov = nums(); break;
         case 'Pn': s.pins = value; break;
+        case 'Ln': s.line = +value; break;
       }
     }
     s.wpos = s.mpos.map((v, i) => v - s.wco[i]);
     this.onStatus?.(s);
   }
+}
+
+// The lines of a G-code program worth sending, without comments, with their
+// 1-based line numbers in the source text.
+export function programLines(text) {
+  const out = [];
+  text.split(/\r?\n/).forEach((raw, i) => {
+    const line = raw.replace(/\(.*?\)|;.*$/g, '').trim();
+    if (line.length && line !== '%') out.push({ text: line, source: i + 1 });
+  });
+  return out;
 }

@@ -1,0 +1,30 @@
+stepper: carry the planner block's line number and rapid flag
+
+The stepper ISR executes st_block_t copies of planner blocks, which drop the
+line number and the rapid (G0) condition. A driver that traces what is being
+executed - here, the wasm simulator attributing tool motion to program lines
+for stock removal and collision checks - needs both, and the planner block
+may already be discarded by then.
+
+--- a/stepper.h
++++ b/stepper.h
+@@ -59,6 +59,8 @@
+     bool backlash_motion;
+     bool dynamic_rpm;                  //!< Tracks motions that require dynamic RPM adjustment
+     offset_id_t offset_id;
++    line_number_t line_number;         //!< Line number of the planner block, for drivers that trace execution
++    bool rapid_motion;                 //!< The planner block is a rapid (G0) motion
+     spindle_ptrs_t *spindle;           //!< Pointer to current spindle for motions that require dynamic RPM adjustment
+ } st_block_t;
+ 
+--- a/stepper.c
++++ b/stepper.c
+@@ -953,6 +953,8 @@
+                 st_prep_block->output_commands = pl_block->output_commands;
+                 st_prep_block->overrides = pl_block->overrides;
+                 st_prep_block->offset_id = pl_block->offset_id;
++                st_prep_block->line_number = pl_block->line_number;
++                st_prep_block->rapid_motion = pl_block->condition.rapid_motion;
+                 st_prep_block->backlash_motion = pl_block->condition.backlash_motion;
+                 st_prep_block->message = pl_block->message;
+                 pl_block->message = NULL;

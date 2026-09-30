@@ -27,11 +27,13 @@
 #include "mcu.h"
 #include "driver.h"
 
-#include "grbl/hal.h"
-#include "grbl/crc.h"
-#include "grbl/planner.h"
-#include "grbl/state_machine.h"
-#include "grbl/nvs_buffer.h"
+#include <grbl/hal.h>
+#include <grbl/crc.h>
+#include <grbl/gcode.h>
+#include <grbl/planner.h>
+#include <grbl/stepper.h>
+#include <grbl/state_machine.h>
+#include <grbl/nvs_buffer.h>
 
 #define TICKS_PER_MS (F_CPU / 1000)
 #define YIELD_AHEAD_MS 4.0      // sleep only once simulated time is this far ahead of wall time
@@ -42,8 +44,11 @@
 #define OUTBUF_SIZE 4096
 // Sample record, one per SAMPLE_STRIDE doubles:
 // t (s), grbl state, spindle rpm (negative = ccw), coolant mask, homed axes mask,
-// physical axis positions (mm), grbl MPos (mm)
-#define SAMPLE_AXES 5
+// program line, motion flags, tool number, physical axis positions (mm), grbl MPos (mm).
+// The line and motion flags are those of the stepper block that moved the
+// machine to this sample (see SAMPLE in web/src/sim/samples.js).
+#define SAMPLE_AXES 8
+#define SAMPLE_MOTION_RAPID 1
 #define SAMPLE_STRIDE (SAMPLE_AXES + 2 * N_AXIS)
 #define SAMPLE_BUF_N 1024
 
@@ -62,13 +67,20 @@ static struct {
 static struct {
     double data[SAMPLE_BUF_N * SAMPLE_STRIDE];
     uint16_t n;
-    uint64_t period;            // ticks between samples while moving
+    uint64_t period;            // ticks between samples while moving, 0 = only at block boundaries and changes
     uint64_t next;
     int32_t last_position[N_AXIS];
     sys_state_t last_state;
     bool moving;
     bool dirty;                 // actuator state changed - sample immediately
 } samples;
+
+// The stepper block that moved the machine last, for the samples.
+static struct {
+    const st_block_t *block;
+    line_number_t line;
+    bool rapid;
+} motion;
 
 static struct {
     int32_t steps[N_AXIS];      // physical motor position, 0 = minimum end of travel
@@ -138,6 +150,12 @@ EM_JS(void, host_clock, (double seconds), {
 
 EM_JS(double, host_speed, (void), {
     return Module.host.speed();
+});
+
+// Simulated ms between position samples while moving; 0 = only where a
+// stepper block ends and on state and actuator changes.
+EM_JS(double, host_sample_period, (void), {
+    return Module.host.samplePeriod ? Module.host.samplePeriod() : 1;
 });
 
 EM_JS(int, host_stop_requested, (void), {
@@ -249,7 +267,10 @@ static void sim_yield (double ms)
 
 static bool machine_is_busy (void)
 {
-    return sim.input_pending ||
+    // Homing waits on its own (switch debounce, pull-off) between moves, with
+    // no planner block queued: count the state, not just the queues.
+    return (state_get() & (STATE_HOMING | STATE_CYCLE | STATE_JOG)) ||
+            sim.input_pending ||
             plan_get_current_block() != NULL ||
              driver_delay_pending() ||
               hal.stream.get_rx_buffer_count() != 0 ||
@@ -292,6 +313,8 @@ static void sim_pace (void)
         sim_yield(0);
 }
 
+static void record_sample (sys_state_t state, bool moved);
+
 static void sim_sample (void)
 {
     bool moved = memcmp(samples.last_position, machine.steps, sizeof(samples.last_position)) != 0;
@@ -300,6 +323,11 @@ static void sim_sample (void)
     if(!(samples.dirty || state != samples.last_state || (sim.masterclock >= samples.next && (moved || samples.moving))))
         return;
 
+    record_sample(state, moved);
+}
+
+static void record_sample (sys_state_t state, bool moved)
+{
     double *s = &samples.data[samples.n * SAMPLE_STRIDE];
     float mpos[N_AXIS];
 
@@ -310,6 +338,9 @@ static void sim_sample (void)
     s[2] = actuators.on ? (actuators.ccw ? -actuators.rpm : actuators.rpm) : 0.0;
     s[3] = (double)actuators.coolant;
     s[4] = (double)sys.homed.mask;
+    s[5] = (double)motion.line;
+    s[6] = motion.rapid ? SAMPLE_MOTION_RAPID : 0;
+    s[7] = gc_state.tool ? (double)gc_state.tool->tool_id : 0.0;
     for(uint_fast8_t i = 0; i < N_AXIS; i++) {
         s[SAMPLE_AXES + i] = (double)machine.steps[i] / (double)settings.axis[i].steps_per_mm;
         s[SAMPLE_AXES + N_AXIS + i] = (double)mpos[i];
@@ -319,7 +350,7 @@ static void sim_sample (void)
     samples.last_state = state;
     samples.moving = moved;
     samples.dirty = false;
-    samples.next = sim.masterclock + samples.period;
+    samples.next = samples.period ? sim.masterclock + samples.period : UINT64_MAX;
 
     if(++samples.n == SAMPLE_BUF_N)
         flush_samples();
@@ -418,8 +449,19 @@ void sim_machine_settings_changed (void)
     samples.dirty = true;
 }
 
-void sim_motor_step (uint32_t step_bits, uint32_t dir_bits)
+void sim_motor_step (uint32_t step_bits, uint32_t dir_bits, const struct st_block *block)
 {
+    // Within a stepper block the tool moves in a straight line, so a sample
+    // at every block boundary (arcs are split into blocks too) traces the path
+    // exactly: this one is the corner, where the previous block ended.
+    if(block != motion.block) {
+        if(memcmp(samples.last_position, machine.steps, sizeof(samples.last_position)) != 0)
+            record_sample(state_get(), true);
+        motion.block = block;
+        motion.line = block ? block->line_number : 0;
+        motion.rapid = block && block->rapid_motion;
+    }
+
     for(uint_fast8_t i = 0; i < N_AXIS; i++) {
         if(step_bits & bit(i))
             machine.steps[i] += dir_bits & bit(i) ? -1 : 1;
@@ -433,7 +475,9 @@ void sim_init (void)
     memset(&sim, 0, sizeof(sim));
     sim.baud_ticks = F_CPU / SIM_BAUD_RATE;
 
-    samples.period = TICKS_PER_MS;
+    double period = host_sample_period();
+    samples.period = period > 0.0 ? (uint64_t)(period * TICKS_PER_MS) : 0;
+    samples.next = 0;
     samples.dirty = true;
 
     memset(nvs, 0xFF, sizeof(nvs));

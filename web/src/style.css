@@ -342,6 +342,37 @@ button.ghost:hover:not(:disabled) { background: var(--hover-bg); }
   padding: 7px 9px;
 }
 
+/* Stock, tools and simulation */
+
+.field-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
+.field-grid input {
+  width: 100%; min-width: 0; font: 13px var(--mono); color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px;
+}
+
+.tool-table { display: grid; gap: 4px; margin-bottom: 8px; }
+.tool-head, .tool-row { display: grid; grid-template-columns: 28px 58px repeat(4, minmax(0, 1fr)) 22px; gap: 4px; align-items: center; }
+.tool-head span { font-size: 11px; color: var(--muted); }
+.tool-row input, .tool-row select {
+  width: 100%; min-width: 0; font: 12px var(--mono); color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 3px;
+}
+.tool-row button { padding: 2px 0; }
+.tool-row input[type='number'], .field-grid input[type='number'] { appearance: textfield; -moz-appearance: textfield; }
+.tool-row input::-webkit-inner-spin-button, .field-grid input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.findings { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; max-height: 240px; overflow-y: auto; }
+.findings:empty { display: none; }
+.findings li button {
+  display: grid; grid-template-columns: 10px auto 1fr; gap: 8px; align-items: baseline;
+  width: 100%; text-align: left; padding: 6px 8px; font-size: 12px; line-height: 1.35;
+}
+.findings .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); align-self: center; }
+.findings .warning .dot { background: var(--warn); }
+.findings .where { font: 500 12px var(--mono); color: var(--muted); white-space: nowrap; }
+.findings .count { color: var(--muted); }
+#simulate + button + .segmented { margin-left: auto; }
+
 /* ?layout=viewer: just the machine, for embedding next to another app's own controls. */
 [data-layout='viewer'] .topbar, [data-layout='viewer'] .panel { display: none; }
 [data-layout='viewer'] .layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }

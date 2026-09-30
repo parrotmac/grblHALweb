@@ -26,7 +26,7 @@
 #include "serial.h"
 #include "sim.h"
 
-#include "grbl/hal.h"
+#include <grbl/hal.h>
 
 #ifndef SQUARING_ENABLED
 #define SQUARING_ENABLED 0
@@ -153,7 +153,7 @@ static void stepperPulseStart (stepper_t *stepper)
 
     if(stepper->step_out.bits) {
         set_step_outputs(stepper->step_out);
-        sim_motor_step(stepper->step_out.bits, stepper->dir_out.bits);
+        sim_motor_step(stepper->step_out.bits, stepper->dir_out.bits, stepper->exec_block);
     }
 }
 

@@ -47,6 +47,11 @@ export class GrblHALClient {
   onStarted = null;       // (variant) the firmware (re)booted
   onCrash = null;         // (message) the firmware trapped or failed to load
   onClose = null;         // (reason) the connection ended
+  onFindings = null;      // (findings) what the live machine did to the stock that it shouldn't have
+  onSimulation = null;    // ({ state, message, progress, findings, stats }) a simulation's progress
+
+  #simulation = null;     // { resolve } for the running simulate()
+  #exports = [];          // resolvers for exportStock(), in order
 
   constructor(port, hello) {
     this.#port = port;
@@ -102,9 +107,42 @@ export class GrblHALClient {
     this.#post({ type: 'probe', plate });
   }
 
-  /** Shows or hides the program preview in the app's machine view. */
-  setView({ program }) {
-    this.#post({ type: 'view', program });
+  /** The tool table for programs that change tools: { [number]: tool }; null empties it. */
+  setTools(tools) {
+    this.#post({ type: 'tools', tools });
+  }
+
+  /**
+   * Shows or hides the program preview in the app's machine view, and picks
+   * the stock it shows: 'live' or 'simulation'.
+   */
+  setView({ program, stock } = {}) {
+    this.#post({ type: 'view', program, stock });
+  }
+
+  /**
+   * Runs a program on a separate controller against the stock, as fast as it
+   * will go. Progress goes to onSimulation; resolves with the last report
+   * ({ state: 'done' | 'stopped' | 'failed' | 'cancelled', findings, stats, ... }).
+   */
+  simulate(text, { name, resolution } = {}) {
+    this.#simulation?.resolve({ state: 'cancelled', message: 'Replaced by another simulation', findings: [], stats: null });
+    return new Promise((resolve) => {
+      this.#simulation = { resolve };
+      this.#post({ type: 'simulate', text, name, resolution });
+    });
+  }
+
+  cancelSimulation() {
+    this.#post({ type: 'cancelSimulation' });
+  }
+
+  /** The heightfield of the 'live' or 'simulation' stock: { model, heights, findings, stats }. */
+  exportStock(source = 'live') {
+    return new Promise((resolve) => {
+      this.#exports.push(resolve);
+      this.#post({ type: 'exportStock', source });
+    });
   }
 
   /** Power cycles the controller; `factory` erases its saved settings first. */
@@ -127,6 +165,9 @@ export class GrblHALClient {
     if (this.#closed) return;
     this.#closed = true;
     this.#port.close();
+    this.#simulation?.resolve({ state: 'cancelled', message: reason, findings: [], stats: null });
+    this.#simulation = null;
+    for (const resolve of this.#exports.splice(0)) resolve(null);
     this.onClose?.(reason);
   }
 
@@ -155,6 +196,23 @@ export class GrblHALClient {
         this.running = false;
         this.onCrash?.(msg.message);
         break;
+      case 'findings':
+        this.onFindings?.(msg.findings);
+        break;
+      case 'simulation': {
+        const { type, ...report } = msg;
+        this.onSimulation?.(report);
+        if (['done', 'stopped', 'failed', 'cancelled'].includes(report.state)) {
+          this.#simulation?.resolve(report);
+          this.#simulation = null;
+        }
+        break;
+      }
+      case 'stockExport': {
+        const { type, ...result } = msg;
+        this.#exports.shift()?.(result);
+        break;
+      }
       case 'disconnected':
         this.#end(msg.reason);
         break;

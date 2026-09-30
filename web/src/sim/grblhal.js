@@ -18,6 +18,7 @@ export class GrblHAL {
   #markStopped = null;
 
   speed = 1;              // simulated seconds per wall second, 0 = as fast as possible
+  samplePeriod = 1;       // simulated ms between position samples while moving; 0 = at block ends only (read at start)
   #fixture = null;        // { version, values }, see fixture below
   simTime = 0;            // simulated seconds at the last yield
   simTimeWall = 0;        // performance.now() when simTime was reported
@@ -104,6 +105,7 @@ export class GrblHAL {
       nvsLoad: (dest) => this.nvsLoad?.(dest) ?? false,
       nvsSave: (data) => this.nvsSave?.(data),
       speed: () => this.speed,
+      samplePeriod: () => this.samplePeriod,
       clock: (seconds) => {
         this.simTime = seconds;
         this.simTimeWall = performance.now();
