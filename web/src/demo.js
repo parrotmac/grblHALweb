@@ -69,3 +69,8 @@ export const machinePreset = [
   '$10=511',
   'G10 L2 P1 X-190 Y-130 Z-48',
 ];
+
+// Stock for the demo job: its profile is 80 × 60 at work X0 Y0 and cuts 3 mm
+// deep, so a 90 × 70 block with work zero 5 mm in from its front left corner,
+// on top. It's as thick as work Z0 is high: it sits on the table.
+export const demoStock = { size: [90, 70, 10], offset: [5, 5] };

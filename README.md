@@ -28,8 +28,11 @@ web/             the app (Vite + three.js)
   src/main.js    UI wiring
   src/bridge.js  postMessage API, app side
   src/sender.js  character-counting G-code sender, status parsing
+  src/simulation.js  background simulation of a program on a second controller
   src/sim/       firmware host: GrblHAL (calling thread), GrblHALWorker (Web Worker)
-  src/viewer/    MachineViewer (three.js)
+  src/stock/     stock simulation: heightfield, tool sweeps, collision checks (Web Worker)
+  src/viewer/    MachineViewer (three.js), StockMesh
+  test/          node --test 'web/test/*.test.js'
   src/firmware/  the two builds, copied here by CMake (not committed)
   public/client.js           postMessage API, embedder side
   public/examples/embed.html embedding example
@@ -64,8 +67,8 @@ spindle, a G54 offset over the table); settings live in localStorage.
 separate window.
 
 CI (`.github/workflows/build.yml`) builds the firmware with this flake,
-runs a smoke test and builds the app on every push and pull request, and
-deploys `master` to GitHub Pages.
+runs a smoke test and the tests and builds the app on every push and pull
+request, and deploys `master` to GitHub Pages.
 
 ## Run headless
 
@@ -75,7 +78,36 @@ node tools/run-headless.mjs -t 1 -e build/nvs.bin -s samples.csv program.nc
 ```
 
 `-t` speed (simulated s per wall s, `0` = as fast as possible), `-e` NVS
-(settings) file, `-s` CSV of sampled machine position/state.
+(settings) file, `-s` CSV of sampled machine position/state, `-f` fixture
+JSON (tool, stock, touch plate).
+
+With a stock in the fixture, `-r report.json` simulates the stock and checks
+for collisions, and `-m heightmap.pgm` writes the cut stock; the exit status
+is 3 if the program collides, so CAM output can be checked in CI:
+
+```sh
+node tools/run-headless.mjs -f fixture.json -r report.json -m part.pgm program.nc
+```
+
+## Stock simulation
+
+Put a stock on the machine (the Stock panel, or the `stock` message) and
+the machine cuts it, live, with whatever it does. **Simulate program** runs
+the loaded program on a second controller with the same settings and work
+offsets, as fast as it will go, without touching the live machine, and lists
+what went wrong by program line: rapids into material, cutting with the
+spindle stopped, material above the flutes or the collet nut hitting the
+stock, the tool going through the table, alarms and errors.
+
+It cuts with the machine's real motion. Every stepper block is a straight
+line of the tool, so the firmware samples the position exactly where one
+block ends and the next begins (`sim_motor_step()` in `src/sim.c`; a core
+patch carries each block's line number and rapid flag to the stepper). The
+tool's path is therefore exactly what grblHAL executed, with its planner,
+arc segmentation, offsets and overrides. The stock is a heightfield of about
+a thousand cells along its longer side, which is exact for anything a 3-axis
+machine can cut, to the precision of a cell. Tools are radial profiles (flat,
+ball, bull nose, V) swept along each move; see `web/src/stock/`.
 
 ## The simulated machine
 

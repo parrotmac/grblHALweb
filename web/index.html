@@ -104,6 +104,49 @@
           </div>
         </section>
 
+        <section class="card">
+          <h2>Stock</h2>
+          <div class="field-grid">
+            <label class="field">X<input id="stock-x" type="number" min="1" step="any" value="90" /></label>
+            <label class="field">Y<input id="stock-y" type="number" min="1" step="any" value="70" /></label>
+            <label class="field">Z<input id="stock-z" type="number" min="0.1" step="any" value="10" /></label>
+          </div>
+          <div class="field-grid">
+            <label class="field" title="How far work zero is from the stock's front left corner, along X">Zero at X<input id="stock-ox" type="number" step="any" value="5" /></label>
+            <label class="field" title="How far work zero is from the stock's front left corner, along Y">Zero at Y<input id="stock-oy" type="number" step="any" value="5" /></label>
+          </div>
+          <div class="button-row">
+            <button id="stock-place" title="Put the stock on the machine with work zero on its top, at the offsets above">Place at work zero</button>
+            <button id="stock-reset" title="Undo everything the machine cut">Uncut</button>
+            <button id="stock-remove">Remove</button>
+          </div>
+          <div class="program-meta" id="stock-meta">No stock on the machine</div>
+        </section>
+
+        <section class="card">
+          <h2>Tools</h2>
+          <div class="tool-table" id="tools">
+            <div class="tool-head"><span>T</span><span>Shape</span><span>Ø</span><span>Angle</span><span>Flutes</span><span>Out</span><span></span></div>
+          </div>
+          <div class="button-row"><button id="tool-add">Add tool</button></div>
+          <div class="program-meta">mm and degrees. Out: stick-out below the collet. T0 and unlisted numbers use the first tool.</div>
+        </section>
+
+        <section class="card">
+          <h2>Simulation</h2>
+          <div class="button-row">
+            <button class="primary" id="simulate" disabled title="Run the program on a separate controller, as fast as possible, and cut it out of the stock">Simulate program</button>
+            <button id="sim-cancel" disabled>Cancel</button>
+            <div class="segmented" id="stock-view" role="radiogroup" aria-label="Stock shown">
+              <button data-view="live" aria-checked="true" title="The stock as the machine has cut it">Live</button>
+              <button data-view="simulation" title="The stock as the simulation cut it">Simulated</button>
+            </div>
+          </div>
+          <div class="progress" aria-hidden="true"><div id="sim-progress"></div></div>
+          <div class="program-meta" id="sim-status">Put a stock on the machine and load a program.</div>
+          <ol class="findings" id="findings"></ol>
+        </section>
+
         <section class="card console">
           <h2>Console</h2>
           <div class="log" id="log" role="log" aria-live="polite"></div>

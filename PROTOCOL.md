@@ -31,10 +31,13 @@ sim.close();                                       // hand the controller back t
 | `timeout` | ms to wait for the app. Default 30000. |
 
 The client has `write(data)`, `realtime(byte)`, `speed`, `showProgram(text, name)`,
+`setStock(box)`, `setTool(tool)`, `setTools(table)`, `setProbe(plate)`,
+`setView({ program, stock })`, `simulate(text, { name, resolution })` (a
+promise of the final report), `cancelSimulation()`, `exportStock(source)`,
 `reboot({ factory })` and `close()`, plus the callbacks `onBytes`, `onData`,
-`onLine`, `onClock`, `onSamples`, `onSpeed`, `onStarted`, `onCrash` and
-`onClose`. The messages below are the actual API, so you can also do without
-the client.
+`onLine`, `onClock`, `onSamples`, `onSpeed`, `onStarted`, `onCrash`,
+`onFindings`, `onSimulation` and `onClose`. The messages below are the actual
+API, so you can also do without the client.
 
 ## The app
 
@@ -88,23 +91,30 @@ Each message is an object with a `type`.
 | `speed` | `value`: number | Simulated seconds per wall second. `0` = as fast as possible. |
 | `program` | `text`: string or null, `name`?: string | Show a program preview in the machine view at grblHAL's work origin. `null` clears it. This does not send anything to the controller. |
 | `reboot` | `factory`?: boolean | Power cycle the controller. With `factory`, its saved settings are erased first. |
-| `stock` | `box`: `{ min: [x, y, z], max: [x, y, z] }` or null | The workpiece on the machine, in physical coordinates (see below). The machine view draws it where it is, whatever the work origin, and the probe input sees its top. `null` takes it off. |
-| `tool` | `tool`: `{ diameter, length, shape?, angle? }` or null | The tool in the collet, mm: `length` is how far its tip sticks out below the collet face, `shape` is `'flat'` (default), `'ball'` or `'v'`, `angle` a V bit's included angle in degrees. `null` puts the default back: a 3.175 mm end mill, 22 mm long. |
+| `stock` | `box`: `{ min: [x, y, z], max: [x, y, z] }` or null | The workpiece on the machine, in physical coordinates (see below). The machine view draws it where it is, whatever the work origin, and the probe input sees its top. The machine cuts it (see [Stock simulation](#stock-simulation)); sending it again puts back an uncut one. `null` takes it off. |
+| `tool` | `tool`: a tool (see below) or null | The tool in the collet: the one used whenever the program's tool number isn't in the `tools` table (including T0, before any M6). Its `length` is how far its tip sticks out below the collet face. `null` puts the default back: a flat 3.175 mm end mill, 22 mm long. |
+| `tools` | `tools`: `{ [number]: tool }` or null | The tool table, for programs that change tools (T*n* M6). Replaces the previous one; `null` empties it. Only for the connected client: the app's own table comes back when it disconnects. |
+| `simulate` | `text`: string, `name`?: string, `resolution`?: number | Runs the program on a separate controller against the stock, as fast as it will go, and reports `simulation` messages. See [Stock simulation](#stock-simulation). A new one replaces a running one. |
+| `cancelSimulation` | | Stops a running simulation. |
+| `exportStock` | `source`?: `'live'` (default) or `'simulation'` | Asks for a stock's heightfield; answered with `stockExport`. |
 | `probe` | `plate`: number or null | A touch plate this thick lies on top of whatever is under the tool: the probe input triggers when the tool tip reaches the stock's top (or the table, beside it) plus the plate. `null` or 0: the tip itself touches the surface. |
-| `view` | `program`?: boolean | Show or hide the program preview in the machine view. It's shown until told otherwise. |
+| `view` | `program`?: boolean, `stock`?: `'live'` or `'simulation'` | Show or hide the program preview in the machine view (it's shown until told otherwise); show the stock as the machine cut it, or as the last simulation did. |
 | `disconnect` | | Give the link back to the app. |
 
 ### App to client
 
 | type | fields | |
 | --- | --- | --- |
-| `connected` | `protocol`, `running`, `variant`, `speed`, `source`, `features` | Sent first. `features`: the optional messages this app understands (`'stock'`, `'tool'`, `'probe'`, `'view'`); an app without the field understands none of them. `running`: the firmware is booted. `variant`: `'jspi'` or `'asyncify'`, or null until booted. `source`: `{ repo, commit, dirty, core }`, the grblHALweb and grblHAL core commits the app was built from (`dirty`: with local changes; never for CI builds). |
+| `connected` | `protocol`, `running`, `variant`, `speed`, `source`, `features` | Sent first. `features`: the optional messages this app understands (`'stock'`, `'tool'`, `'probe'`, `'view'`, `'tools'`, `'cutting'` for live cutting and `findings`, `'simulate'` for `simulate` and `cancelSimulation`, `'exportStock'`); an app without the field understands none of them. `running`: the firmware is booted. `variant`: `'jspi'` or `'asyncify'`, or null until booted. `source`: `{ repo, commit, dirty, core }`, the grblHALweb and grblHAL core commits the app was built from (`dirty`: with local changes; never for CI builds). |
 | `started` | `variant` | The firmware booted, either at load or after `reboot`. grblHAL's own `GrblHAL ...` banner follows in `serial`. |
 | `serial` | `bytes`: Uint8Array | Raw UART output. |
 | `clock` | `time`: number | Simulated seconds, at every firmware yield (about 60 per second). |
 | `samples` | `data`: Float64Array, `count`, `stride` | Position samples, only if you connected with `samples: true`. See below. |
 | `speed` | `value` | The speed was changed from the app's own UI. |
 | `crashed` | `message` | The firmware trapped, or failed to load. |
+| `findings` | `source`: `'live'`, `findings` | What the live machine did to the stock that it shouldn't have: the whole list, whenever it changes. See [Findings](#findings). |
+| `simulation` | `state`, `message`, `progress`, `findings`, `stats` | A simulation's progress, up to 10 times a second, and once more when it ends. `state`: `'starting'`, `'homing'`, `'running'`, then `'done'`, `'stopped'` (by an alarm), `'failed'` or `'cancelled'`. `message`: a sentence for people. `progress`: `{ acked, total, time }`, program lines acknowledged, of the total, and simulated seconds. `stats`: `{ removed (mm³), cutTime, time (s), resolution (mm), errors, warnings }`. |
+| `stockExport` | `source`, `model`, `heights`, `findings`, `stats` | The heightfield asked for with `exportStock`, or `model: null` if there is no such stock. `model`: `{ min, max, nx, ny, cellX, cellY }`; `heights`: a Float32Array of `nx * ny` Z values, row by row from the front left corner, each the top of the material over that cell's centre. |
 | `disconnected` | `reason` | The connection ended: another client connected, or the app closed. |
 | `error` | `message` | The connection was refused during the handshake. |
 
@@ -128,7 +138,8 @@ at the top of a stock `t` mm thick, for a tool `L` mm long, is
 `G10 L2 P1 Z(t + L - $132)`.
 
 The stock and the tool are drawn in the machine view and are what the probe
-input sees; the machine doesn't cut the stock or collide with it.
+input sees, and the machine cuts the stock: see
+[Stock simulation](#stock-simulation).
 
 ### Position samples
 
@@ -147,6 +158,62 @@ moving, and on every change of state, spindle or coolant. Each sample is
 | 5+N … | grblHAL machine positions (MPos), mm |
 
 N = (stride - 5) / 2.
+
+## Stock simulation
+
+The stock on the machine is cut by the machine's actual motion: the tool tip's
+path as integrated from the firmware's step and direction outputs, after
+grblHAL's planner, arc segmentation, acceleration, offsets and overrides have
+done their work. So it shows what this controller will do with the program,
+not what a G-code interpreter thinks it should.
+
+The stock is a heightfield: a grid over its X-Y extent (about 1024 cells along
+its longer side unless `resolution` says otherwise), each cell holding the top
+of the material there. That represents anything a 3-axis machine can cut, to
+the precision of a cell; it can't represent undercuts.
+
+- **Live**: once a `stock` is set, whatever the machine does cuts it:
+  jogging, homing, streaming a program. Collisions are reported as `findings`.
+- **`simulate`**: runs the program on a second, independent controller with
+  the same settings and work offsets (as saved, so G92 and tool length
+  offsets aren't carried over), as fast as it will go, without touching the
+  live machine. It homes the machine if homing is enabled (or unlocks it),
+  numbers every line with its line in `text` (replacing any N words), and
+  does what an operator would: resumes after M0/M1 pauses and tool changes.
+  It stops at an alarm. Its stock is separate from the live one; `view`
+  switches the machine view between them.
+
+Tools, mm and degrees: `diameter`, `length` (stick-out below the collet
+face), `shape` (`'flat'`, `'ball'`, `'bull'` or `'v'`), `angle` (V bits,
+included, default 90), `tipDiameter` (V bits, default 0), `cornerRadius`
+(bull nose), `fluteLength` (default: the whole stick-out) and `shankDiameter`
+(default: the diameter).
+
+The machine is zeroed with the tool in the collet (`tool`): its tip is its
+`length` below the collet face. After a tool change the new tool is assumed
+touched off, so its tip lands where the old one's did; its own `length` still
+counts for whether the collet nut clears the stock.
+
+### Findings
+
+Each finding is `{ kind, severity, line, time, depth, at, message, count }`:
+one per kind and program line, with `count` repeats. `line` is the program
+line (0 when motion isn't from a numbered line), `time` the simulated seconds
+when it first happened, `depth` how far into the material in mm, `at` the
+physical position [x, y, z] where it was deepest.
+
+| kind | severity | |
+| --- | --- | --- |
+| `rapid` | error | A rapid (G0) move cut material. |
+| `spindle` | error | Material was cut with the spindle stopped. |
+| `shank` | error | Material stood above the flutes, where the shank passes. |
+| `holder` | error | The collet nut ran into the stock: the tool doesn't stick out far enough. |
+| `table` | warning | The tool tip went below the table (Z = 0). |
+| `alarm` | error | The controller raised an alarm (a simulation stops there). |
+| `error` | error | The controller answered a line with an error. |
+
+Moves shallower than 0.01 mm into the material aren't collisions: that's
+the step resolution, or a surface found by probing.
 
 ## Example
 

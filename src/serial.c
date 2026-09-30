@@ -27,8 +27,8 @@
 #include "mcu.h"
 #include "sim.h"
 
-#include "grbl/hal.h"
-#include "grbl/protocol.h"
+#include <grbl/hal.h>
+#include <grbl/protocol.h>
 
 static stream_tx_buffer_t txbuffer = {0};
 static stream_rx_buffer_t rxbuffer = {0};

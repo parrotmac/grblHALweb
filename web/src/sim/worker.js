@@ -4,7 +4,7 @@
 // yield - serial output, position samples, the simulated clock - goes back to
 // the page as one 'yield' message.
 //
-// Page -> worker: start { variant, speed, nvs, samples, fixture }, input { bytes },
+// Page -> worker: start { variant, speed, nvs, samples, samplePeriod, fixture }, input { bytes },
 //                 speed { value }, fixture { value }, stop
 // Worker -> page: ready { variant }, yield { time, bytes?, samples? }, nvs { data },
 //                 crash { message }, stopped
@@ -48,11 +48,12 @@ function flush(time) {
   postMessage(msg, transfer);
 }
 
-async function start({ variant, speed, nvs, samples: wantSamples, fixture: initial }) {
+async function start({ variant, speed, nvs, samples: wantSamples, samplePeriod = 1, fixture: initial }) {
   fixture ??= initial;
   const loaded = await loadFirmware(variant);
   sim = new GrblHAL({
     speed,
+    samplePeriod,
     variant: loaded.variant,
     onBytes: (b) => bytes.push(b), // already a copy of wasm memory
     onSamples: wantSamples

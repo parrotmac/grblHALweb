@@ -32,6 +32,9 @@ jobs:
           nix develop --command node tools/run-headless.mjs -c '$I' -c 'G1 X10 F500' -c '?' | tee smoke.log
           grep -q 'MPos:10.000,0.000,0.000' smoke.log
 
+      - name: Tests
+        run: nix develop --command node --test 'web/test/*.test.js'
+
       - name: Build app
         working-directory: web
         run: nix develop --command bash -c 'pnpm install --frozen-lockfile && pnpm build'

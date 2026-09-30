@@ -63,9 +63,12 @@ int16_t sim_serial_in (void); // -1 if no data
 // Physical machine: motor positions integrated from the step/dir outputs,
 // independent of what grblHAL believes (sys.position), and the limit
 // switches they trip. Call sim_machine_init() once settings are loaded.
+// `block` is the stepper block being executed: its program line and motion
+// type go into the position samples.
+struct st_block;
 void sim_machine_init (void);
 void sim_machine_settings_changed (void);
-void sim_motor_step (uint32_t step_bits, uint32_t dir_bits);
+void sim_motor_step (uint32_t step_bits, uint32_t dir_bits, const struct st_block *block);
 
 // Actuator state reported by the driver for the host visualisation
 void sim_set_spindle (bool on, bool ccw, float rpm);

@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { SAMPLE } from '../sim/samples.js';
 import { parseGcode } from './gcode.js';
+import { StockMesh } from './stock-mesh.js';
 
 export { parseGcode };
 
@@ -67,6 +68,8 @@ export class MachineViewer {
   #previewVisible = true;
   #toolSpec = DEFAULT_TOOL;
   #lastFrame = 0;
+  #stockMesh = null;
+  #markers = null;
 
   constructor(container, options = {}) {
     this.container = container;
@@ -239,7 +242,62 @@ export class MachineViewer {
       new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: 0xa87f4d })),
     );
     this.stock.position.set(...[0, 1, 2].map((i) => (box.min[i] + box.max[i]) / 2));
+    this.stock.visible = !this.#stockMesh;
     this.scene.add(this.stock);
+  }
+
+  // A simulated stock, as it is being cut: a grid description from the stock
+  // worker (Stock.model), or null to go back to the plain box. Its tiles
+  // arrive through updateStockTiles().
+  setStockModel(model) {
+    if (this.#stockMesh) {
+      this.scene.remove(this.#stockMesh.group);
+      this.#stockMesh.dispose();
+      this.#stockMesh = null;
+    }
+    if (model) {
+      this.#stockMesh = new StockMesh(model);
+      this.scene.add(this.#stockMesh.group);
+    }
+    if (this.stock) this.stock.visible = !this.#stockMesh;
+  }
+
+  updateStockTiles(tiles) {
+    this.#stockMesh?.update(tiles);
+  }
+
+  // Marks findings (stock simulation collisions and warnings) where they
+  // happened: [{ at: [x, y, z], severity: 'error' | 'warning' }], physical mm.
+  setFindings(findings) {
+    if (this.#markers) {
+      this.scene.remove(this.#markers);
+      disposeTree(this.#markers);
+      this.#markers = null;
+    }
+    const placed = (findings ?? []).filter((f) => f.at);
+    if (!placed.length) return;
+    this.#markers = new THREE.Group();
+    const geometry = new THREE.SphereGeometry(1, 16, 8);
+    const materials = {
+      error: new THREE.MeshBasicMaterial({ color: 0xe5484d, depthTest: false, transparent: true, opacity: 0.85 }),
+      warning: new THREE.MeshBasicMaterial({ color: 0xf5a524, depthTest: false, transparent: true, opacity: 0.85 }),
+    };
+    for (const f of placed) {
+      const marker = new THREE.Mesh(geometry, materials[f.severity] ?? materials.error);
+      marker.position.set(...f.at);
+      marker.renderOrder = 10;
+      this.#markers.add(marker);
+    }
+    this.scene.add(this.#markers);
+  }
+
+  // Points the camera at a physical position, from `distance` mm away.
+  focus(point, distance = 60) {
+    const target = new THREE.Vector3(...point);
+    const direction = this.camera.position.clone().sub(this.controls.target).normalize();
+    this.controls.target.copy(target);
+    this.camera.position.copy(target).addScaledVector(direction, distance);
+    this.controls.update();
   }
 
   // The tool in the collet: { diameter, length (below the collet face), shape:
@@ -481,6 +539,10 @@ export class MachineViewer {
 
     this.#updateWorkOrigin();
 
+    if (this.#markers) {
+      for (const m of this.#markers.children) m.scale.setScalar(Math.max(0.3, m.position.distanceTo(this.camera.position) * 0.008));
+    }
+
     // Show rotation direction and roughly the speed, capped well below
     // the frame rate so it does not alias into standing still.
     if (this.rpm) {
@@ -491,6 +553,7 @@ export class MachineViewer {
     this.coolantCone.visible = !!this.coolant;
 
     this.controls.update();
+    this.#stockMesh?.updateLod(this.camera, this.renderer.domElement.clientHeight || 600);
     this.renderer.render(this.scene, this.camera);
   }
 }

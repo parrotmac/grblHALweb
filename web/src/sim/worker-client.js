@@ -24,6 +24,7 @@ export class GrblHALWorker {
   // Options
   firmware = 'auto';      // 'auto' | 'jspi' | 'asyncify'
   samples = false;        // deliver position samples (onSamples)
+  samplePeriod = 1;       // simulated ms between samples while moving; 0 = at block ends only
 
   // Callbacks, as for GrblHAL
   onBytes = null;
@@ -115,6 +116,7 @@ export class GrblHALWorker {
         speed: this.#speed,
         nvs: hasNvs ? nvs : null,
         samples: this.samples && !!this.onSamples,
+        samplePeriod: this.samplePeriod,
         fixture: this.#fixture,
       });
       for (const bytes of this.#pending.splice(0)) worker.postMessage({ type: 'input', bytes }, [bytes.buffer]);
